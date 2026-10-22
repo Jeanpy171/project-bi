@@ -13,39 +13,71 @@ export function EChartsView({ options, height = 300, className }: EChartsViewPro
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
-  useEffect(() => {
+  const initOrUpdateChart = () => {
     if (!chartRef.current) return;
 
-    // Check dark mode
     const isDark = document.documentElement.classList.contains('dark');
+
+    // If already initialized, dispose and re-init with correct theme
+    if (chartInstance.current) {
+      chartInstance.current.dispose();
+    }
+
     const chart = echarts.init(chartRef.current, isDark ? 'dark' : undefined, {
       renderer: 'canvas',
     });
     chartInstance.current = chart;
 
-    chart.setOption({
+    const themeAdjustedOptions: echarts.EChartsOption = {
       backgroundColor: 'transparent',
+      textStyle: {
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        color: isDark ? '#94a3b8' : '#334155',
+      },
       ...options,
-    });
+    };
+
+    chart.setOption(themeAdjustedOptions, true);
+  };
+
+  useEffect(() => {
+    initOrUpdateChart();
+
+    if (!chartRef.current) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      chart.resize();
+      chartInstance.current?.resize();
     });
-
     resizeObserver.observe(chartRef.current);
+
+    // Watch for dark mode changes on documentElement
+    const mutationObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === 'class') {
+          initOrUpdateChart();
+        }
+      }
+    });
+    mutationObserver.observe(document.documentElement, { attributes: true });
 
     return () => {
       resizeObserver.disconnect();
-      chart.dispose();
+      mutationObserver.disconnect();
+      chartInstance.current?.dispose();
       chartInstance.current = null;
     };
   }, []);
 
   useEffect(() => {
     if (chartInstance.current) {
+      const isDark = document.documentElement.classList.contains('dark');
       chartInstance.current.setOption(
         {
           backgroundColor: 'transparent',
+          textStyle: {
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            color: isDark ? '#94a3b8' : '#334155',
+          },
           ...options,
         },
         true,

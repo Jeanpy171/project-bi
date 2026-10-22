@@ -2,7 +2,16 @@
 
 import { useState } from 'react';
 import type { ConnectionConfig, DiagnosticReport } from '@bi/contracts';
-import { AlertCircle, CheckCircle2, Loader2, Server, Terminal, X, Zap } from 'lucide-react';
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  Loader2,
+  Server,
+  Terminal,
+  X,
+  Zap,
+} from 'lucide-react';
 
 interface DiagnosticModalProps {
   readonly isOpen: boolean;
@@ -10,10 +19,10 @@ interface DiagnosticModalProps {
   readonly onConnectionSaved?: (config: ConnectionConfig) => void;
 }
 
-export function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
+export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: DiagnosticModalProps) {
   const [config, setConfig] = useState<ConnectionConfig>({
-    id: '123e4567-e89b-12d3-a456-426614174000',
-    name: 'Base Demo Retail',
+    id: crypto.randomUUID(),
+    name: 'PostgreSQL Local',
     engine: 'postgres',
     host: 'localhost',
     port: 5433,
@@ -55,7 +64,8 @@ export function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
               code: 'DOCKER_LOCALHOST_CHECK',
               label: 'Verificación de host localhost / Docker',
               status: 'warning',
-              message: 'Host especificado como "localhost". Si usas Docker Compose, recuerda usar host.docker.internal si la BDD está afuera.',
+              message:
+                'Host especificado como "localhost". Si usas Docker Compose, recuerda usar host.docker.internal si la BDD está afuera.',
               suggestedFix: 'Usa host.docker.internal para acceder al host desde contenedores.',
             },
             {
@@ -110,6 +120,11 @@ export function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
     }
   };
 
+  const handleSaveAndUse = () => {
+    onConnectionSaved?.(config);
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-2xl rounded-2xl bg-surface border border-surface-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -120,8 +135,10 @@ export function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
               <Server className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-foreground">Conectar Base de Datos</h2>
-              <p className="text-xs text-muted">Asistente de diagnóstico y prueba de conectividad</p>
+              <h2 className="text-lg font-bold text-foreground">Conectar Base de Datos Propia</h2>
+              <p className="text-xs text-muted">
+                Asistente guiado para conectar PostgreSQL con verificación de red y credenciales
+              </p>
             </div>
           </div>
           <button
@@ -136,81 +153,87 @@ export function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Nombre de la Conexión</label>
+              <label className="block text-xs font-semibold text-muted mb-1 uppercase tracking-wider">
+                Nombre de la Conexión
+              </label>
               <input
                 type="text"
                 value={config.name}
                 onChange={(e) => setConfig({ ...config, name: e.target.value })}
-                className="w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Motor</label>
+              <label className="block text-xs font-semibold text-muted mb-1 uppercase tracking-wider">Motor</label>
               <select
                 value={config.engine}
                 disabled
-                className="w-full rounded-lg border border-surface-border bg-surface-subtle px-3 py-2 text-sm text-foreground"
+                className="w-full rounded-xl border border-surface-border bg-surface-subtle px-3 py-2 text-xs font-medium text-foreground shadow-sm"
               >
-                <option value="postgres">PostgreSQL (Plugin MVP)</option>
+                <option value="postgres">PostgreSQL (Plugin Nativo)</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-muted mb-1">Host / Dirección</label>
+              <label className="block text-xs font-semibold text-muted mb-1 uppercase tracking-wider">
+                Host / Servidor
+              </label>
               <input
                 type="text"
                 value={config.host}
                 onChange={(e) => setConfig({ ...config, host: e.target.value })}
-                className="w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="localhost o host.docker.internal"
+                className="w-full rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
+                placeholder="localhost, host.docker.internal o IP"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Puerto</label>
+              <label className="block text-xs font-semibold text-muted mb-1 uppercase tracking-wider">Puerto</label>
               <input
                 type="number"
                 value={config.port}
                 onChange={(e) => setConfig({ ...config, port: Number(e.target.value) })}
-                className="w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Base de Datos</label>
+              <label className="block text-xs font-semibold text-muted mb-1 uppercase tracking-wider">
+                Base de Datos
+              </label>
               <input
                 type="text"
                 value={config.database}
                 onChange={(e) => setConfig({ ...config, database: e.target.value })}
-                className="w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Usuario</label>
+              <label className="block text-xs font-semibold text-muted mb-1 uppercase tracking-wider">Usuario</label>
               <input
                 type="text"
                 value={config.user}
                 onChange={(e) => setConfig({ ...config, user: e.target.value })}
-                className="w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1">Contraseña</label>
+              <label className="block text-xs font-semibold text-muted mb-1 uppercase tracking-wider">Contraseña</label>
               <input
                 type="password"
                 value={config.password}
                 onChange={(e) => setConfig({ ...config, password: e.target.value })}
-                className="w-full rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
               />
             </div>
           </div>
 
           {/* Diagnostic Results */}
           {report && (
-            <div className="mt-6 rounded-xl border border-surface-border bg-surface-subtle p-4 space-y-3">
+            <div className="mt-4 rounded-xl border border-surface-border bg-surface-subtle p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {report.isHealthy ? (
@@ -218,34 +241,34 @@ export function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
                   ) : (
                     <AlertCircle className="h-5 w-5 text-danger" />
                   )}
-                  <span className="text-sm font-semibold text-foreground">
-                    {report.isHealthy ? 'Diagnóstico Exitoso' : 'Fallo en Diagnóstico'}
+                  <span className="text-sm font-bold text-foreground">
+                    {report.isHealthy ? 'Diagnóstico Exitoso - Conexión Verificada' : 'Fallo en Diagnóstico'}
                   </span>
                 </div>
-                <span className="text-xs text-muted">{report.latencyMs} ms de latencia</span>
+                <span className="text-xs font-medium text-muted">{report.latencyMs} ms de latencia</span>
               </div>
 
               <div className="space-y-2 pt-2 border-t border-surface-border">
                 {report.steps.map((step, idx) => (
-                  <div key={idx} className="rounded-lg bg-surface p-2.5 text-xs space-y-1">
+                  <div key={idx} className="rounded-xl border border-surface-border bg-surface p-3 text-xs space-y-1 shadow-sm">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-foreground">{step.label}</span>
+                      <span className="font-semibold text-foreground">{step.label}</span>
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                           step.status === 'passed'
                             ? 'bg-success/10 text-success'
                             : step.status === 'warning'
-                              ? 'bg-yellow-500/10 text-yellow-500'
+                              ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
                               : 'bg-danger/10 text-danger'
                         }`}
                       >
                         {step.status}
                       </span>
                     </div>
-                    {step.message && <p className="text-muted">{step.message}</p>}
+                    {step.message && <p className="text-muted leading-relaxed">{step.message}</p>}
                     {step.suggestedFix && (
-                      <p className="text-primary font-medium flex items-center gap-1 mt-1">
-                        <Terminal className="h-3 w-3" /> Sugerencia: {step.suggestedFix}
+                      <p className="text-primary font-semibold flex items-center gap-1.5 mt-1">
+                        <Terminal className="h-3.5 w-3.5" /> Sugerencia: {step.suggestedFix}
                       </p>
                     )}
                   </div>
@@ -259,23 +282,30 @@ export function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
         <div className="flex items-center justify-between px-6 py-4 border-t border-surface-border bg-surface-subtle">
           <div className="flex items-center gap-1.5 text-xs text-muted">
             <Zap className="h-3.5 w-3.5 text-primary" />
-            <span>Solo lectura estricta garantizada por AST</span>
+            <span>Garantía de Solo Lectura vía AST</span>
           </div>
 
           <div className="flex items-center gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-sm font-medium text-muted hover:text-foreground hover:bg-surface-border transition-colors"
+              className="px-4 py-2 rounded-xl text-xs font-medium text-muted hover:text-foreground hover:bg-surface-border transition-colors"
             >
-              Cancelar
+              Cerrar
             </button>
             <button
               onClick={handleTest}
               disabled={isLoading}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:bg-primary-hover transition-colors shadow-sm disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-surface-border bg-surface text-foreground hover:bg-surface-subtle transition-all shadow-sm disabled:opacity-50"
             >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Server className="h-4 w-4" />}
-              Diagnosticar y Conectar
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Server className="h-4 w-4 text-primary" />}
+              Diagnosticar
+            </button>
+            <button
+              onClick={handleSaveAndUse}
+              className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary-hover transition-all shadow-sm"
+            >
+              <Check className="h-4 w-4" />
+              Guardar y Usar Conexión
             </button>
           </div>
         </div>
