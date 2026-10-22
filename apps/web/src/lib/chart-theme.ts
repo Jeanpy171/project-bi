@@ -2,57 +2,82 @@ import * as echarts from 'echarts';
 
 /**
  * Curated Metabase / Stripe SaaS BI Color Palette
- * Zero tacky default colors; elegant, accessible, high-contrast in light mode.
+ * Zero tacky default colors; elegant, accessible, high-contrast in light and dark mode.
  */
-export const SAAS_PALETTE = [
-  '#3B82F6', // Modern Blue
-  '#10B981', // Emerald Teal
-  '#8B5CF6', // Soft Violet
-  '#F59E0B', // Amber
-  '#06B6D4', // Cyan
-  '#EC4899', // Pink Rose
-  '#6366F1', // Indigo
-  '#14B8A6', // Teal
+export const SAAS_PALETTE_LIGHT = [
+  '#2563EB', // Vibrant Blue
+  '#059669', // Emerald
+  '#7C3AED', // Violet
+  '#D97706', // Amber
+  '#0891B2', // Cyan
+  '#DB2777', // Pink Rose
+  '#4F46E5', // Indigo
+] as const;
+
+export const SAAS_PALETTE_DARK = [
+  '#60A5FA', // Bright Sky Blue
+  '#34D399', // Bright Emerald
+  '#A78BFA', // Bright Violet
+  '#FBBF24', // Bright Amber
+  '#22D3EE', // Bright Cyan
+  '#F472B6', // Bright Pink
+  '#818CF8', // Bright Indigo
 ] as const;
 
 export interface ChartThemeTokens {
   readonly isDark: boolean;
   readonly splitLineColor: string;
   readonly axisLabelColor: string;
+  readonly pointerColor: string;
   readonly tooltipBg: string;
   readonly tooltipBorder: string;
   readonly tooltipText: string;
+  readonly palette: readonly string[];
 }
 
 export function getChartThemeTokens(isDark: boolean): ChartThemeTokens {
   return {
     isDark,
-    splitLineColor: isDark ? '#1e293b' : '#f1f5f9',
-    axisLabelColor: isDark ? '#94a3b8' : '#64748b',
+    splitLineColor: isDark ? 'rgba(51, 65, 85, 0.45)' : '#e2e8f0',
+    axisLabelColor: isDark ? '#e2e8f0' : '#334155', // High contrast slate-200 in dark, slate-700 in light
+    pointerColor: isDark ? '#475569' : '#94a3b8',
     tooltipBg: isDark ? '#0f172a' : '#ffffff',
-    tooltipBorder: isDark ? '#334155' : '#e2e8f0',
+    tooltipBorder: isDark ? '#334155' : '#cbd5e1',
     tooltipText: isDark ? '#f8fafc' : '#0f172a',
+    palette: isDark ? SAAS_PALETTE_DARK : SAAS_PALETTE_LIGHT,
   };
 }
 
 /**
  * Common modern tooltip with shadow, rounded corners, and crisp typography.
  */
-export function getModernTooltip(tokens: ChartThemeTokens, trigger: 'axis' | 'item' = 'axis') {
+export function getModernTooltip(
+  tokens: ChartThemeTokens,
+  trigger: 'axis' | 'item' = 'axis',
+): echarts.TooltipComponentOption {
   return {
     trigger,
     backgroundColor: tokens.tooltipBg,
     borderColor: tokens.tooltipBorder,
     borderWidth: 1,
     padding: [10, 14],
+    axisPointer: {
+      type: 'line' as const,
+      lineStyle: {
+        color: tokens.pointerColor,
+        type: 'dashed' as const,
+        width: 1,
+      },
+    },
     textStyle: {
       color: tokens.tooltipText,
       fontSize: 12,
       fontFamily: 'system-ui, -apple-system, sans-serif',
       fontWeight: 500,
     },
-    extraCssText:
-      'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04); border-radius: 10px;',
+    extraCssText: tokens.isDark
+      ? 'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4); border-radius: 10px; color: #f8fafc;'
+      : 'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04); border-radius: 10px; color: #0f172a;',
   };
 }
 
@@ -68,13 +93,13 @@ export function buildModernBarOption(
   const tokens = getChartThemeTokens(isDark);
 
   return {
-    color: [...SAAS_PALETTE],
+    color: [...tokens.palette],
     tooltip: getModernTooltip(tokens, 'axis'),
     grid: {
       left: '2%',
       right: '2%',
       top: '12%',
-      bottom: '5%',
+      bottom: '6%',
       containLabel: true,
     },
     xAxis: {
@@ -84,7 +109,8 @@ export function buildModernBarOption(
       axisTick: { show: false },
       axisLabel: {
         color: tokens.axisLabelColor,
-        fontSize: 11,
+        fontSize: 12,
+        fontWeight: 600,
         fontFamily: 'system-ui, -apple-system, sans-serif',
         margin: 12,
       },
@@ -104,6 +130,7 @@ export function buildModernBarOption(
       axisLabel: {
         color: tokens.axisLabelColor,
         fontSize: 11,
+        fontWeight: 600,
         fontFamily: 'system-ui, -apple-system, sans-serif',
       },
     },
@@ -114,10 +141,15 @@ export function buildModernBarOption(
         barMaxWidth: 36,
         data: values as number[],
         itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#3B82F6' },
-            { offset: 1, color: '#2563EB' },
-          ]),
+          color: isDark
+            ? new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#60A5FA' },
+                { offset: 1, color: '#2563EB' },
+              ])
+            : new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#3B82F6' },
+                { offset: 1, color: '#1D4ED8' },
+              ]),
           borderRadius: [6, 6, 0, 0],
         },
       },
@@ -135,15 +167,16 @@ export function buildModernLineOption(
   isDark = false,
 ): echarts.EChartsOption {
   const tokens = getChartThemeTokens(isDark);
+  const lineColor = isDark ? '#A78BFA' : '#7C3AED';
 
   return {
-    color: [...SAAS_PALETTE],
+    color: [...tokens.palette],
     tooltip: getModernTooltip(tokens, 'axis'),
     grid: {
       left: '2%',
       right: '2%',
       top: '12%',
-      bottom: '5%',
+      bottom: '6%',
       containLabel: true,
     },
     xAxis: {
@@ -153,7 +186,8 @@ export function buildModernLineOption(
       axisTick: { show: false },
       axisLabel: {
         color: tokens.axisLabelColor,
-        fontSize: 11,
+        fontSize: 12,
+        fontWeight: 600,
         fontFamily: 'system-ui, -apple-system, sans-serif',
         margin: 12,
       },
@@ -173,6 +207,7 @@ export function buildModernLineOption(
       axisLabel: {
         color: tokens.axisLabelColor,
         fontSize: 11,
+        fontWeight: 600,
         fontFamily: 'system-ui, -apple-system, sans-serif',
       },
     },
@@ -185,16 +220,21 @@ export function buildModernLineOption(
         symbolSize: 6,
         lineStyle: {
           width: 2.5,
-          color: '#8B5CF6',
+          color: lineColor,
         },
         itemStyle: {
-          color: '#8B5CF6',
+          color: lineColor,
         },
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(139, 92, 246, 0.22)' },
-            { offset: 1, color: 'rgba(139, 92, 246, 0.00)' },
-          ]),
+          color: isDark
+            ? new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: 'rgba(167, 139, 250, 0.28)' },
+                { offset: 1, color: 'rgba(167, 139, 250, 0.00)' },
+              ])
+            : new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: 'rgba(124, 58, 237, 0.20)' },
+                { offset: 1, color: 'rgba(124, 58, 237, 0.00)' },
+              ]),
         },
         data: values as number[],
       },
@@ -213,7 +253,7 @@ export function buildModernDonutOption(
   const tokens = getChartThemeTokens(isDark);
 
   return {
-    color: [...SAAS_PALETTE],
+    color: [...tokens.palette],
     tooltip: getModernTooltip(tokens, 'item'),
     legend: {
       bottom: '2%',
@@ -225,7 +265,7 @@ export function buildModernDonutOption(
       textStyle: {
         color: tokens.axisLabelColor,
         fontSize: 11,
-        fontWeight: 500,
+        fontWeight: 600,
         fontFamily: 'system-ui, -apple-system, sans-serif',
       },
     },

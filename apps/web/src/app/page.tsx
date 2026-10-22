@@ -110,6 +110,7 @@ export default function HomePage() {
             dynamicCards={dynamicCards}
             onDeleteCard={handleDeleteCard}
             onNavigateToBuilder={() => setCurrentView('builder')}
+            isDarkMode={isDarkMode}
           />
         )}
 
@@ -128,6 +129,7 @@ export default function HomePage() {
             preselectedTableId={builderContext.tableId}
             onSaveToDashboard={handleSaveCardToDashboard}
             onOpenUploadExcel={() => setIsExcelModalOpen(true)}
+            isDarkMode={isDarkMode}
           />
         )}
 

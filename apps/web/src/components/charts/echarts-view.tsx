@@ -5,79 +5,60 @@ import { useEffect, useRef } from 'react';
 
 export interface EChartsViewProps {
   readonly options: echarts.EChartsOption;
+  readonly isDarkMode?: boolean;
   readonly height?: number | string;
   readonly className?: string;
 }
 
-export function EChartsView({ options, height = 300, className }: EChartsViewProps) {
+export function EChartsView({
+  options,
+  isDarkMode = false,
+  height = 300,
+  className,
+}: EChartsViewProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
-  const initOrUpdateChart = () => {
+  // Initialize or re-create chart whenever the theme mode changes
+  useEffect(() => {
     if (!chartRef.current) return;
 
-    const isDark = document.documentElement.classList.contains('dark');
-
-    // If already initialized, dispose and re-init with correct theme
+    // Dispose existing instance to completely clean out old theme cache
     if (chartInstance.current) {
       chartInstance.current.dispose();
+      chartInstance.current = null;
     }
 
-    const chart = echarts.init(chartRef.current, isDark ? 'dark' : undefined, {
+    const chart = echarts.init(chartRef.current, isDarkMode ? 'dark' : undefined, {
       renderer: 'canvas',
     });
     chartInstance.current = chart;
 
     const themeAdjustedOptions: echarts.EChartsOption = {
       backgroundColor: 'transparent',
-      textStyle: {
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        color: isDark ? '#94a3b8' : '#334155',
-      },
       ...options,
     };
 
     chart.setOption(themeAdjustedOptions, true);
-  };
-
-  useEffect(() => {
-    initOrUpdateChart();
-
-    if (!chartRef.current) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      chartInstance.current?.resize();
+      chart.resize();
     });
     resizeObserver.observe(chartRef.current);
 
-    // Watch for dark mode changes on documentElement
-    const mutationObserver = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.attributeName === 'class') {
-          initOrUpdateChart();
-        }
-      }
-    });
-    mutationObserver.observe(document.documentElement, { attributes: true });
-
     return () => {
       resizeObserver.disconnect();
-      mutationObserver.disconnect();
-      chartInstance.current?.dispose();
+      chart.dispose();
       chartInstance.current = null;
     };
-  }, []);
+  }, [isDarkMode]);
 
+  // Update chart options smoothly when options change
   useEffect(() => {
     if (chartInstance.current) {
-      const isDark = document.documentElement.classList.contains('dark');
       chartInstance.current.setOption(
         {
           backgroundColor: 'transparent',
-          textStyle: {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            color: isDark ? '#94a3b8' : '#334155',
-          },
           ...options,
         },
         true,

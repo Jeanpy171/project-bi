@@ -37,6 +37,7 @@ interface VisualBuilderViewProps {
     summaryValue?: string;
   }) => void;
   readonly onOpenUploadExcel: () => void;
+  readonly isDarkMode?: boolean;
 }
 
 export function VisualBuilderView({
@@ -45,6 +46,7 @@ export function VisualBuilderView({
   preselectedTableId,
   onSaveToDashboard,
   onOpenUploadExcel,
+  isDarkMode = false,
 }: VisualBuilderViewProps) {
   const [selectedSourceId, setSelectedSourceId] = useState<string>(
     preselectedSourceId || dataSources[0]?.id || '',
@@ -320,7 +322,7 @@ export function VisualBuilderView({
                 </table>
               </div>
             ) : (
-              <EChartsView options={chartOption} height={380} />
+              <EChartsView isDarkMode={isDarkMode} options={chartOption} height={380} />
             )}
           </div>
         </div>

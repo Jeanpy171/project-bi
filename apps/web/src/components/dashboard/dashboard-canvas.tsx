@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import * as echarts from 'echarts';
 import type { DashboardCard, DashboardDocument } from '@bi/contracts';
 import { EChartsView } from '../charts/echarts-view';
@@ -35,6 +35,7 @@ interface DashboardCanvasProps {
   readonly dynamicCards: readonly DynamicCard[];
   readonly onDeleteCard: (index: number) => void;
   readonly onNavigateToBuilder: () => void;
+  readonly isDarkMode: boolean;
 }
 
 export function DashboardCanvas({
@@ -42,6 +43,7 @@ export function DashboardCanvas({
   dynamicCards,
   onDeleteCard,
   onNavigateToBuilder,
+  isDarkMode,
 }: DashboardCanvasProps) {
   const [doc] = useState<DashboardDocument>(initialDocument);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -51,20 +53,6 @@ export function DashboardCanvas({
     setTimeout(() => setIsRefreshing(false), 500);
   };
 
-  const [isDark, setIsDark] = useState(false);
-
-  // Monitor theme changes for reactive chart palette
-  useEffect(() => {
-    const updateTheme = () => {
-      setIsDark(document.documentElement.classList.contains('dark'));
-    };
-    updateTheme();
-
-    const observer = new MutationObserver(updateTheme);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
-  }, []);
-
   // Professional Curated Bar Chart Configuration (Zero harsh black lines, dashed subtle grid)
   const barChartOption = useMemo(
     () =>
@@ -72,9 +60,9 @@ export function DashboardCanvas({
         ['Tecnología', 'Oficina', 'Servicios', 'Consultoría'],
         [4250, 1820, 2950, 1400],
         'Ventas 2026',
-        isDark,
+        isDarkMode,
       ),
-    [isDark],
+    [isDarkMode],
   );
 
   // Professional Curated Line Chart Configuration (Smooth spline, modern gradient area)
@@ -84,9 +72,9 @@ export function DashboardCanvas({
         ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'],
         [1200, 2400, 3100, 4800],
         'Ingresos',
-        isDark,
+        isDarkMode,
       ),
-    [isDark],
+    [isDarkMode],
   );
 
   // Professional Curated Donut Chart Configuration (Metabase palette, rounded segments)
@@ -100,9 +88,9 @@ export function DashboardCanvas({
           { name: 'Chile', value: 484 },
         ],
         'Distribución',
-        isDark,
+        isDarkMode,
       ),
-    [isDark],
+    [isDarkMode],
   );
 
   return (
@@ -190,7 +178,7 @@ export function DashboardCanvas({
                     <div className="text-xs text-success font-medium">Métrica calculada en vivo</div>
                   </div>
                 ) : (
-                  <EChartsView options={card.echartsOption} height={280} />
+                  <EChartsView isDarkMode={isDarkMode} options={card.echartsOption} height={280} />
                 )}
               </div>
             ))}
@@ -258,7 +246,7 @@ export function DashboardCanvas({
             </div>
             <Maximize2 className="h-4 w-4 text-muted hover:text-foreground cursor-pointer transition-colors" />
           </div>
-          <EChartsView options={barChartOption} height={280} />
+          <EChartsView isDarkMode={isDarkMode} options={barChartOption} height={280} />
         </div>
 
         {/* Chart 2: Donut Chart */}
@@ -269,7 +257,7 @@ export function DashboardCanvas({
               <p className="text-xs text-muted">País de destino de envíos</p>
             </div>
           </div>
-          <EChartsView options={donutChartOption} height={280} />
+          <EChartsView isDarkMode={isDarkMode} options={donutChartOption} height={280} />
         </div>
       </div>
 
@@ -341,7 +329,7 @@ export function DashboardCanvas({
               <p className="text-xs text-muted">Evolución en tiempo real</p>
             </div>
           </div>
-          <EChartsView options={lineChartOption} height={260} />
+          <EChartsView isDarkMode={isDarkMode} options={lineChartOption} height={260} />
         </div>
       </div>
     </div>
