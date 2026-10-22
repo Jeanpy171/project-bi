@@ -1,0 +1,54 @@
+services:
+  metadata-db:
+    image: pgvector/pgvector:pg16
+    container_name: bi-metadata-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${METADATA_DB_NAME:-bi_metadata}
+      POSTGRES_USER: ${METADATA_DB_USER:-bi_admin}
+      POSTGRES_PASSWORD: ${METADATA_DB_PASSWORD:-bi_secret_dev}
+    ports:
+      - "${METADATA_DB_PORT:-5432}:5432"
+    volumes:
+      - metadata_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${METADATA_DB_USER:-bi_admin} -d ${METADATA_DB_NAME:-bi_metadata}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bi-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  demo-db:
+    image: postgres:16-alpine
+    container_name: bi-demo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: retail_demo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: demo_password_dev
+    ports:
+      - "${DEMO_DB_PORT:-5433}:5432"
+    volumes:
+      - ./seeds/init-demo.sql:/docker-entrypoint-initdb.d/init-demo.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d retail_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  metadata_data:
+  redis_data:
