@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import type { DashboardCard, DashboardDocument } from '@bi/contracts';
 import { EChartsView } from '../charts/echarts-view';
@@ -20,7 +20,6 @@ import {
   GripVertical,
   Heading,
   Maximize2,
-  Palette,
   Plus,
   RefreshCw,
   Share2,
@@ -29,7 +28,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
-export type CardWidth = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+export type CardWidth = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export interface GridCardItem {
   readonly id: string;
@@ -64,7 +63,7 @@ interface DashboardCanvasProps {
   readonly isDarkMode: boolean;
 }
 
-const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v2';
+const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v3';
 
 export function DashboardCanvas({
   initialDocument,
@@ -76,9 +75,20 @@ export function DashboardCanvas({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
-  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
   const [expandedCard, setExpandedCard] = useState<GridCardItem | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [activeColorPickerCardId, setActiveColorPickerCardId] = useState<string | null>(null);
+
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+
+  // Resize State for direct manipulation (pulling corners/edges)
+  const [resizingCard, setResizingCard] = useState<{
+    id: string;
+    initialWidth: CardWidth;
+    initialHeight: number;
+    currentWidth: CardWidth;
+    currentHeight: number;
+  } | null>(null);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -141,7 +151,7 @@ export function DashboardCanvas({
         summaryValue: '$12,490.00',
         trendText: '+18.4% vs mes anterior',
         width: 3,
-        height: 200,
+        height: 220,
         customColor: '#059669',
         badge: 'Meta Superada',
       },
@@ -152,7 +162,7 @@ export function DashboardCanvas({
         summaryValue: '148',
         trendText: '+9.2% de conversión',
         width: 3,
-        height: 200,
+        height: 220,
         customColor: '#2563eb',
         badge: 'Operativo',
       },
@@ -163,7 +173,7 @@ export function DashboardCanvas({
         summaryValue: '$84.39',
         trendText: 'Promedio por cliente activo',
         width: 3,
-        height: 200,
+        height: 220,
         customColor: '#7c3aed',
       },
       {
@@ -173,7 +183,7 @@ export function DashboardCanvas({
         summaryValue: '$145,000.00',
         trendText: 'Cuenta 111 (Disponible)',
         width: 3,
-        height: 200,
+        height: 220,
         customColor: '#d97706',
         badge: 'Métrica Clave',
       },
@@ -191,7 +201,7 @@ export function DashboardCanvas({
         subtitle: 'Calculado desde retail_demo.products & order_items',
         chartKind: 'bar_grouped',
         width: 8,
-        height: 320,
+        height: 360,
         customColor: '#2563eb',
       },
       {
@@ -200,7 +210,7 @@ export function DashboardCanvas({
         subtitle: 'País de destino de envíos',
         chartKind: 'donut',
         width: 4,
-        height: 320,
+        height: 360,
         customColor: '#db2777',
       },
       {
@@ -209,7 +219,7 @@ export function DashboardCanvas({
         subtitle: 'Estructura de balance con niveles 1 > 11 > 111',
         chartKind: 'plan_cuentas',
         width: 6,
-        height: 340,
+        height: 380,
         customColor: '#2563eb',
         badge: 'Pixel-Perfect',
       },
@@ -219,14 +229,14 @@ export function DashboardCanvas({
         subtitle: 'Evolución en tiempo real',
         chartKind: 'line',
         width: 6,
-        height: 340,
+        height: 380,
         customColor: '#7c3aed',
       },
     ],
     [],
   );
 
-  // Cards State (Initialized with localStorage if present)
+  // Cards State (Initialized with localStorage if present, sanitized with minimum width 3)
   const [cards, setCards] = useState<GridCardItem[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -234,7 +244,11 @@ export function DashboardCanvas({
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
+            return parsed.map((item: GridCardItem) => ({
+              ...item,
+              width: Math.max(3, Math.min(12, item.width || 6)) as CardWidth,
+              height: Math.max(180, item.height || 320),
+            }));
           }
         }
       } catch {
@@ -272,7 +286,7 @@ export function DashboardCanvas({
             summaryValue: dc.summaryValue,
             echartsOption: dc.echartsOption,
             width: dc.chartKind === 'kpi' ? 4 : 6,
-            height: dc.chartKind === 'kpi' ? 200 : 320,
+            height: dc.chartKind === 'kpi' ? 220 : 360,
             customColor: dc.chartKind === 'kpi' ? '#059669' : '#2563eb',
             badge: 'Personalizada',
           });
@@ -298,14 +312,6 @@ export function DashboardCanvas({
   };
 
   // Card Mutators
-  const updateCardWidth = (id: string, width: CardWidth) => {
-    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, width } : c)));
-  };
-
-  const updateCardHeight = (id: string, height: number) => {
-    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, height } : c)));
-  };
-
   const updateCardColor = (id: string, customColor: string) => {
     setCards((prev) =>
       prev.map((c) => (c.id === id ? { ...c, customColor } : c)),
@@ -339,29 +345,104 @@ export function DashboardCanvas({
     });
   };
 
-  // Drag and drop handlers with interactive placeholder animation
-  const handleDragStart = (id: string) => {
-    setDraggedCardId(id);
-  };
-
-  const handleDragOver = (e: React.DragEvent, id: string) => {
+  // ==========================================
+  // DIRECT MANIPULATION: Drag to Resize (Pull like an image)
+  // ==========================================
+  const startResizing = (
+    e: React.MouseEvent,
+    cardId: string,
+    initialWidth: CardWidth,
+    initialHeight: number,
+    mode: 'corner' | 'bottom' | 'right' = 'corner',
+  ) => {
     e.preventDefault();
-    if (dragOverCardId !== id) {
-      setDragOverCardId(id);
-    }
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const containerWidth =
+      gridContainerRef.current?.getBoundingClientRect().width || 1200;
+    const colWidth = containerWidth / 12;
+
+    setResizingCard({
+      id: cardId,
+      initialWidth,
+      initialHeight,
+      currentWidth: initialWidth,
+      currentHeight: initialHeight,
+    });
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+
+      let newWidth = initialWidth;
+      let newHeight = initialHeight;
+
+      if (mode === 'corner' || mode === 'right') {
+        const colDelta = Math.round(deltaX / colWidth);
+        const rawSpan = initialWidth + colDelta;
+        // Clamp width between 3 (25%) and 12 (100%)
+        newWidth = Math.max(3, Math.min(12, rawSpan)) as CardWidth;
+      }
+
+      if (mode === 'corner' || mode === 'bottom') {
+        // Clamp height between 180px and 800px
+        newHeight = Math.max(180, Math.min(800, initialHeight + deltaY));
+      }
+
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === cardId ? { ...c, width: newWidth, height: newHeight } : c,
+        ),
+      );
+
+      setResizingCard({
+        id: cardId,
+        initialWidth,
+        initialHeight,
+        currentWidth: newWidth,
+        currentHeight: newHeight,
+      });
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setResizingCard(null);
+    };
+
+    const cursor =
+      mode === 'corner'
+        ? 'se-resize'
+        : mode === 'bottom'
+        ? 'ns-resize'
+        : 'ew-resize';
+    document.body.style.cursor = cursor;
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
   };
 
-  const handleDragLeave = () => {
-    setDragOverCardId(null);
+  // ==========================================
+  // DYNAMIC DRAG & DROP: Real-Time Instant Swap
+  // ==========================================
+  const handleDragStart = (id: string, e: React.DragEvent) => {
+    setDraggedCardId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
   };
 
-  const handleDrop = (targetId: string) => {
-    if (!draggedCardId || draggedCardId === targetId) {
-      setDraggedCardId(null);
-      setDragOverCardId(null);
-      return;
-    }
+  const handleDragOver = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
 
+    if (!draggedCardId || draggedCardId === targetId) return;
+
+    // Real-Time Swap: Cards immediately shift to the other side as you drag over!
     setCards((prev) => {
       const fromIdx = prev.findIndex((c) => c.id === draggedCardId);
       const toIdx = prev.findIndex((c) => c.id === targetId);
@@ -372,18 +453,15 @@ export function DashboardCanvas({
       if (moved) next.splice(toIdx, 0, moved);
       return next;
     });
+  };
 
+  const handleDragEnd = () => {
     setDraggedCardId(null);
-    setDragOverCardId(null);
   };
 
   // Helper class generators for width (12-column responsive grid)
   const getColSpanClass = (w: CardWidth): string => {
     switch (w) {
-      case 1:
-        return 'col-span-12 sm:col-span-3 lg:col-span-1';
-      case 2:
-        return 'col-span-12 sm:col-span-4 lg:col-span-2';
       case 3:
         return 'col-span-12 sm:col-span-6 lg:col-span-3';
       case 4:
@@ -432,7 +510,7 @@ export function DashboardCanvas({
               Tiempo Real (SSE)
             </span>
             {isEditMode && (
-              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5 border border-primary/20">
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5 border border-primary/20 animate-pulse">
                 <Sparkles className="h-3.5 w-3.5" />
                 Modo Edición Activo
               </span>
@@ -468,7 +546,10 @@ export function DashboardCanvas({
 
           {/* Toggle Edit / Layout Mode Button */}
           <button
-            onClick={() => setIsEditMode((prev) => !prev)}
+            onClick={() => {
+              setIsEditMode((prev) => !prev);
+              setActiveColorPickerCardId(null);
+            }}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all shadow-sm ${
               isEditMode
                 ? 'border-primary bg-primary text-white shadow-primary/20'
@@ -506,9 +587,10 @@ export function DashboardCanvas({
               <GripVertical className="h-5 w-5" />
             </div>
             <div>
-              <span className="font-bold text-sm block">Modo de Personalización Flexible</span>
+              <span className="font-bold text-sm block">Modo de Redimensionamiento y Reorganización Directa</span>
               <span className="text-muted block text-xs mt-0.5">
-                Editá títulos directamente, ajustá ancho (1-12 col) y alto libremente, arrastrá con animación y elegí cualquier color de la paleta.
+                • <strong>Redimensionar:</strong> Jalá la esquina inferior derecha ⤡ o los bordes de cualquier tarjeta como una imagen.
+                • <strong>Reorganizar:</strong> Arrastrá desde el asa ⠿ y verás cómo las demás tarjetas se desplazan dinámicamente en tiempo real.
               </span>
             </div>
           </div>
@@ -520,7 +602,10 @@ export function DashboardCanvas({
               + Añadir Sección
             </button>
             <button
-              onClick={() => setIsEditMode(false)}
+              onClick={() => {
+                setIsEditMode(false);
+                setActiveColorPickerCardId(null);
+              }}
               className="px-4 py-1.5 rounded-lg bg-primary text-white font-bold hover:bg-primary-hover shrink-0 shadow-sm text-xs"
             >
               Guardar Cambios
@@ -530,11 +615,14 @@ export function DashboardCanvas({
       )}
 
       {/* Unified 12-Column Flexible Grid with Fluid Transitions */}
-      <div className="grid grid-cols-12 gap-5 w-full">
+      <div
+        ref={gridContainerRef}
+        className="grid grid-cols-12 gap-5 w-full relative"
+      >
         {cards.map((card, idx) => {
           const colSpanClass = getColSpanClass(card.width);
           const isBeingDragged = draggedCardId === card.id;
-          const isDragTarget = dragOverCardId === card.id && draggedCardId !== card.id;
+          const isBeingResized = resizingCard?.id === card.id;
 
           // Render Section Header Card
           if (card.chartKind === 'section_header') {
@@ -542,36 +630,33 @@ export function DashboardCanvas({
               <div
                 key={card.id}
                 draggable={isEditMode}
-                onDragStart={() => handleDragStart(card.id)}
+                onDragStart={(e) => handleDragStart(card.id, e)}
                 onDragOver={(e) => handleDragOver(e, card.id)}
-                onDragLeave={handleDragLeave}
-                onDrop={() => handleDrop(card.id)}
+                onDragEnd={handleDragEnd}
                 className={`${colSpanClass} rounded-2xl bg-surface/80 border p-4 transition-all duration-300 relative ${
                   isBeingDragged
-                    ? 'opacity-40 scale-[0.98] border-dashed border-primary'
-                    : isDragTarget
-                    ? 'ring-2 ring-primary ring-offset-2 scale-[1.01] shadow-xl bg-primary/10'
+                    ? 'opacity-40 scale-[0.98] border-dashed border-primary shadow-inner'
                     : 'border-surface-border'
                 }`}
                 style={
                   card.customColor
-                    ? { borderLeftWidth: '5px', borderLeftColor: card.customColor }
+                    ? { borderLeftWidth: '6px', borderLeftColor: card.customColor }
                     : undefined
                 }
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5 flex-1">
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     {isEditMode && (
                       <div
-                        className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-subtle text-muted hover:text-foreground"
-                        title="Arrastrar sección"
+                        className="cursor-grab active:cursor-grabbing p-1.5 rounded hover:bg-surface-subtle text-muted hover:text-foreground shrink-0"
+                        title="Arrastrar sección para mover"
                       >
-                        <GripVertical className="h-4 w-4" />
+                        <GripVertical className="h-5 w-5" />
                       </div>
                     )}
-                    <div className="flex-1 space-y-1">
+                    <div className="flex-1 min-w-0 space-y-1">
                       {isEditMode ? (
-                        <div className="space-y-1.5 w-full">
+                        <div className="space-y-1 w-full">
                           <input
                             type="text"
                             value={card.title}
@@ -593,8 +678,8 @@ export function DashboardCanvas({
                         </div>
                       ) : (
                         <div>
-                          <h2 className="text-lg font-bold text-foreground tracking-tight flex items-center gap-2">
-                            <span>{card.title}</span>
+                          <h2 className="text-lg font-bold text-foreground tracking-tight">
+                            {card.title}
                           </h2>
                           {card.subtitle && (
                             <p className="text-xs text-muted mt-0.5">{card.subtitle}</p>
@@ -606,10 +691,10 @@ export function DashboardCanvas({
 
                   {/* Edit Controls for Section Header */}
                   {isEditMode && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       {/* Color Picker */}
                       <label
-                        className="flex items-center gap-1 text-[11px] font-semibold text-muted cursor-pointer px-2 py-1 rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle"
+                        className="flex items-center gap-1.5 text-xs font-semibold text-muted cursor-pointer px-2.5 py-1.5 rounded-xl border border-surface-border bg-surface hover:bg-surface-subtle shadow-sm"
                         title="Elegir color de la sección"
                       >
                         <input
@@ -621,14 +706,14 @@ export function DashboardCanvas({
                         <span>Color</span>
                       </label>
 
-                      <div className="flex items-center gap-1 bg-surface-subtle p-1 rounded-lg border border-surface-border">
+                      <div className="flex items-center gap-1 bg-surface-subtle p-1 rounded-xl border border-surface-border shadow-sm">
                         <button
                           onClick={() => moveCard(idx, 'up')}
                           disabled={idx === 0}
                           className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
                           title="Mover arriba"
                         >
-                          <ArrowUp className="h-3 w-3" />
+                          <ArrowUp className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => moveCard(idx, 'down')}
@@ -636,14 +721,14 @@ export function DashboardCanvas({
                           className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
                           title="Mover abajo"
                         >
-                          <ArrowDown className="h-3 w-3" />
+                          <ArrowDown className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => deleteCardById(card.id)}
                           className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors ml-1"
                           title="Eliminar sección"
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
@@ -654,27 +739,29 @@ export function DashboardCanvas({
           }
 
           // Render Normal Dashboard Card (KPI, Chart, Table)
+          const isColorPickerOpen = activeColorPickerCardId === card.id;
+
           return (
             <div
               key={card.id}
-              draggable={isEditMode}
-              onDragStart={() => handleDragStart(card.id)}
+              draggable={isEditMode && !resizingCard}
+              onDragStart={(e) => handleDragStart(card.id, e)}
               onDragOver={(e) => handleDragOver(e, card.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={() => handleDrop(card.id)}
+              onDragEnd={handleDragEnd}
               className={`${colSpanClass} rounded-2xl bg-surface p-5 flex flex-col justify-between transition-all duration-300 relative group border ${
                 isBeingDragged
-                  ? 'opacity-40 scale-[0.98] border-dashed border-primary'
-                  : isDragTarget
-                  ? 'ring-2 ring-primary ring-offset-2 scale-[1.01] shadow-2xl bg-primary/5 border-primary'
+                  ? 'opacity-40 scale-[0.98] border-dashed border-primary shadow-inner'
+                  : isBeingResized
+                  ? 'ring-2 ring-primary ring-offset-2 shadow-2xl border-primary'
                   : 'border-surface-border shadow-sm hover:border-primary/40'
               }`}
               style={{
                 borderColor: card.customColor || undefined,
                 boxShadow: card.customColor
-                  ? `0 4px 18px ${card.customColor}18`
+                  ? `0 4px 20px ${card.customColor}20`
                   : undefined,
-                minHeight: card.height ? `${card.height}px` : undefined,
+                height: card.height ? `${card.height}px` : undefined,
+                minHeight: '200px',
               }}
             >
               {/* Highlight Top Accent Bar */}
@@ -685,21 +772,30 @@ export function DashboardCanvas({
                 />
               )}
 
+              {/* Dimension Tooltip when actively resizing */}
+              {isBeingResized && (
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full bg-foreground text-background text-xs font-bold shadow-xl flex items-center gap-1.5 pointer-events-none animate-in fade-in">
+                  <span>📐 {card.width} columnas ({Math.round((card.width / 12) * 100)}%)</span>
+                  <span>•</span>
+                  <span>{card.height}px</span>
+                </div>
+              )}
+
               {/* Card Header */}
-              <div className="space-y-1.5 mb-3">
+              <div className="mb-2 shrink-0">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2 flex-1">
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
                     {/* Drag Handle in Edit Mode */}
                     {isEditMode && (
                       <div
                         className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 mt-0.5"
-                        title="Arrastrar para reorganizar"
+                        title="Arrastrar para reorganizar (se desplaza en tiempo real)"
                       >
                         <GripVertical className="h-4 w-4" />
                       </div>
                     )}
 
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       {isEditMode ? (
                         <div className="space-y-1 w-full">
                           <input
@@ -711,34 +807,36 @@ export function DashboardCanvas({
                             placeholder="Título..."
                             className="w-full px-2 py-0.5 rounded border border-surface-border bg-surface text-sm font-bold text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
                           />
-                          <input
-                            type="text"
-                            value={card.subtitle || ''}
-                            onChange={(e) =>
-                              updateCardField(card.id, { subtitle: e.target.value })
-                            }
-                            placeholder="Subtítulo..."
-                            className="w-full px-2 py-0.5 rounded border border-surface-border bg-surface text-[11px] text-muted focus:ring-1 focus:ring-primary focus:outline-none"
-                          />
-                          <input
-                            type="text"
-                            value={card.badge || ''}
-                            onChange={(e) =>
-                              updateCardField(card.id, { badge: e.target.value })
-                            }
-                            placeholder="Etiqueta / Badge (ej: VIP, Meta)..."
-                            className="w-full px-2 py-0.5 rounded border border-surface-border bg-surface text-[10px] text-muted focus:ring-1 focus:ring-primary focus:outline-none"
-                          />
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={card.subtitle || ''}
+                              onChange={(e) =>
+                                updateCardField(card.id, { subtitle: e.target.value })
+                              }
+                              placeholder="Subtítulo..."
+                              className="flex-1 px-2 py-0.5 rounded border border-surface-border bg-surface text-[11px] text-muted focus:ring-1 focus:ring-primary focus:outline-none"
+                            />
+                            <input
+                              type="text"
+                              value={card.badge || ''}
+                              onChange={(e) =>
+                                updateCardField(card.id, { badge: e.target.value })
+                              }
+                              placeholder="Badge..."
+                              className="w-20 px-2 py-0.5 rounded border border-surface-border bg-surface text-[10px] text-muted focus:ring-1 focus:ring-primary focus:outline-none"
+                            />
+                          </div>
                         </div>
                       ) : (
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-foreground tracking-tight">
+                            <h3 className="text-sm font-bold text-foreground tracking-tight truncate">
                               {card.title}
                             </h3>
                             {card.badge && (
                               <span
-                                className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0"
                                 style={
                                   card.customColor
                                     ? {
@@ -754,22 +852,77 @@ export function DashboardCanvas({
                             )}
                           </div>
                           {card.subtitle && (
-                            <p className="text-[11px] text-muted mt-0.5">{card.subtitle}</p>
+                            <p className="text-[11px] text-muted mt-0.5 truncate">{card.subtitle}</p>
                           )}
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Actions Header (Move, Delete, Expand) */}
+                  {/* Actions Header Toolbar */}
                   <div className="flex items-center gap-1 shrink-0">
+                    {/* Color Swatch Menu in Edit Mode */}
                     {isEditMode && (
-                      <div className="flex items-center gap-1 bg-surface-subtle p-1 rounded-lg border border-surface-border">
+                      <div className="relative">
+                        <button
+                          onClick={() =>
+                            setActiveColorPickerCardId(isColorPickerOpen ? null : card.id)
+                          }
+                          className="p-1.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle transition-all"
+                          title="Cambiar color de acento"
+                        >
+                          <div
+                            className="h-3.5 w-3.5 rounded-full border border-black/20"
+                            style={{ backgroundColor: card.customColor || '#2563eb' }}
+                          />
+                        </button>
+
+                        {/* Floating Color Menu Dropdown */}
+                        {isColorPickerOpen && (
+                          <div className="absolute right-0 top-8 z-30 p-2.5 rounded-2xl bg-surface border border-surface-border shadow-2xl w-48 space-y-2 animate-in fade-in">
+                            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">
+                              Color de Acento
+                            </span>
+                            <div className="grid grid-cols-4 gap-1.5">
+                              {colorPresets.map((hl) => (
+                                <button
+                                  key={hl.value}
+                                  onClick={() => {
+                                    updateCardColor(card.id, hl.value);
+                                    setActiveColorPickerCardId(null);
+                                  }}
+                                  title={hl.label}
+                                  className="h-6 w-6 rounded-lg transition-transform hover:scale-110 flex items-center justify-center border border-surface-border shadow-sm"
+                                  style={{ backgroundColor: hl.value }}
+                                >
+                                  {card.customColor === hl.value && (
+                                    <Check className="h-3 w-3 text-white" />
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="pt-1.5 border-t border-surface-border flex items-center justify-between">
+                              <span className="text-[10px] font-semibold text-muted">Paleta Libre:</span>
+                              <input
+                                type="color"
+                                value={card.customColor || '#2563eb'}
+                                onChange={(e) => updateCardColor(card.id, e.target.value)}
+                                className="h-5 w-6 rounded cursor-pointer border-0 p-0 bg-transparent"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Up / Down / Delete in Edit Mode */}
+                    {isEditMode && (
+                      <div className="flex items-center gap-0.5 bg-surface-subtle p-0.5 rounded-lg border border-surface-border">
                         <button
                           onClick={() => moveCard(idx, 'up')}
                           disabled={idx === 0}
                           className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
-                          title="Mover arriba / izquierda"
+                          title="Mover antes"
                         >
                           <ArrowUp className="h-3 w-3" />
                         </button>
@@ -777,13 +930,13 @@ export function DashboardCanvas({
                           onClick={() => moveCard(idx, 'down')}
                           disabled={idx === cards.length - 1}
                           className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
-                          title="Mover abajo / derecha"
+                          title="Mover después"
                         >
                           <ArrowDown className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => deleteCardById(card.id)}
-                          className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors ml-1"
+                          className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
                           title="Eliminar tarjeta"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -801,144 +954,12 @@ export function DashboardCanvas({
                     </button>
                   </div>
                 </div>
-
-                {/* Edit Controls Toolbar inside Card (Width, Height, Full Color Picker) */}
-                {isEditMode && (
-                  <div className="pt-2.5 mt-2 border-t border-surface-border flex flex-col gap-2.5 text-[11px] bg-surface-subtle/40 p-2.5 rounded-xl">
-                    {/* Width Span Selector (Presets & Stepper) */}
-                    <div className="flex flex-wrap items-center justify-between gap-1.5">
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted font-bold mr-1">Ancho:</span>
-                        {[
-                          { w: 3 as CardWidth, label: '1/4' },
-                          { w: 4 as CardWidth, label: '1/3' },
-                          { w: 6 as CardWidth, label: '1/2' },
-                          { w: 8 as CardWidth, label: '2/3' },
-                          { w: 12 as CardWidth, label: 'Full' },
-                        ].map((item) => (
-                          <button
-                            key={item.w}
-                            onClick={() => updateCardWidth(card.id, item.w)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
-                              card.width === item.w
-                                ? 'bg-primary text-white shadow-sm'
-                                : 'bg-surface hover:bg-surface-border text-foreground border border-surface-border'
-                            }`}
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Precise Column Stepper (1 to 12) */}
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted text-[10px]">Col:</span>
-                        <input
-                          type="range"
-                          min={1}
-                          max={12}
-                          value={card.width}
-                          onChange={(e) =>
-                            updateCardWidth(
-                              card.id,
-                              parseInt(e.target.value, 10) as CardWidth,
-                            )
-                          }
-                          className="w-16 h-1 bg-surface-border rounded-lg appearance-none cursor-pointer"
-                        />
-                        <span className="font-mono font-bold text-foreground w-4 text-center">
-                          {card.width}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Height Customization */}
-                    <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-surface-border/50">
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted font-bold mr-1">Alto:</span>
-                        {[
-                          { h: 200, label: 'Compacto' },
-                          { h: 320, label: 'Estándar' },
-                          { h: 440, label: 'Alto' },
-                          { h: 560, label: 'Extra' },
-                        ].map((item) => (
-                          <button
-                            key={item.h}
-                            onClick={() => updateCardHeight(card.id, item.h)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
-                              (card.height || 320) === item.h
-                                ? 'bg-primary text-white shadow-sm'
-                                : 'bg-surface hover:bg-surface-border text-foreground border border-surface-border'
-                            }`}
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Height Custom Slider */}
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted text-[10px]">px:</span>
-                        <input
-                          type="range"
-                          min={180}
-                          max={700}
-                          step={20}
-                          value={card.height || 320}
-                          onChange={(e) =>
-                            updateCardHeight(card.id, parseInt(e.target.value, 10))
-                          }
-                          className="w-16 h-1 bg-surface-border rounded-lg appearance-none cursor-pointer"
-                        />
-                        <span className="font-mono font-bold text-foreground text-[10px] w-8 text-right">
-                          {card.height || 320}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Full Color Palette Picker */}
-                    <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-surface-border/50">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-muted font-bold mr-1">Color:</span>
-                        {/* Quick Presets */}
-                        {colorPresets.map((hl) => (
-                          <button
-                            key={hl.value}
-                            onClick={() => updateCardColor(card.id, hl.value)}
-                            title={`Resaltado: ${hl.label}`}
-                            className={`h-4 w-4 rounded-full transition-transform ${
-                              card.customColor === hl.value
-                                ? 'ring-2 ring-foreground scale-110'
-                                : 'opacity-70 hover:opacity-100'
-                            }`}
-                            style={{ backgroundColor: hl.value }}
-                          />
-                        ))}
-                      </div>
-
-                      {/* Native Full Spectrum HTML Color Picker */}
-                      <label
-                        className="flex items-center gap-1 text-[10px] font-bold text-foreground cursor-pointer px-2 py-0.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle"
-                        title="Abrir selector de color libre (16M de colores)"
-                      >
-                        <Palette className="h-3 w-3 text-primary" />
-                        <span>Paleta Libre</span>
-                        <input
-                          type="color"
-                          value={card.customColor || '#2563eb'}
-                          onChange={(e) => updateCardColor(card.id, e.target.value)}
-                          className="h-3.5 w-3.5 rounded cursor-pointer border-0 p-0 bg-transparent ml-1"
-                        />
-                      </label>
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* Card Body Renderers (Responsive to card.height) */}
-              <div className="flex-1 flex flex-col justify-center">
+              {/* Card Body Renderers (Responsive to dynamic height) */}
+              <div className="flex-1 flex flex-col justify-center min-h-0 overflow-hidden">
                 {card.chartKind === 'kpi' && (
-                  <div className="py-4 space-y-1">
+                  <div className="py-2 space-y-1">
                     <div className="text-3xl font-black text-foreground tracking-tight font-mono">
                       {card.summaryValue}
                     </div>
@@ -955,7 +976,7 @@ export function DashboardCanvas({
                   <EChartsView
                     isDarkMode={isDarkMode}
                     options={card.echartsOption || defaultBarOption}
-                    height={card.height ? Math.max(180, card.height - 80) : 280}
+                    height={card.height ? Math.max(160, card.height - 85) : 280}
                   />
                 )}
 
@@ -963,7 +984,7 @@ export function DashboardCanvas({
                   <EChartsView
                     isDarkMode={isDarkMode}
                     options={card.echartsOption || defaultDonutOption}
-                    height={card.height ? Math.max(180, card.height - 80) : 280}
+                    height={card.height ? Math.max(160, card.height - 85) : 280}
                   />
                 )}
 
@@ -971,19 +992,19 @@ export function DashboardCanvas({
                   <EChartsView
                     isDarkMode={isDarkMode}
                     options={card.echartsOption || defaultLineOption}
-                    height={card.height ? Math.max(180, card.height - 80) : 260}
+                    height={card.height ? Math.max(160, card.height - 85) : 260}
                   />
                 )}
 
                 {card.chartKind === 'plan_cuentas' && (
                   <div
-                    className="overflow-x-auto rounded-xl border border-surface-border"
+                    className="overflow-auto rounded-xl border border-surface-border h-full"
                     style={{
-                      maxHeight: card.height ? `${card.height - 60}px` : undefined,
+                      maxHeight: card.height ? `${card.height - 85}px` : undefined,
                     }}
                   >
                     <table className="w-full text-left text-xs">
-                      <thead className="border-b border-surface-border text-foreground font-semibold bg-surface-subtle sticky top-0">
+                      <thead className="border-b border-surface-border text-foreground font-semibold bg-surface-subtle sticky top-0 z-10">
                         <tr>
                           <th className="py-2.5 px-3">Código</th>
                           <th className="py-2.5 px-3">Nombre de Cuenta</th>
@@ -1027,6 +1048,50 @@ export function DashboardCanvas({
                   </div>
                 )}
               </div>
+
+              {/* ======================================================= */}
+              {/* DIRECT MANIPULATION RESIZE HANDLES (PULL LIKE AN IMAGE) */}
+              {/* ======================================================= */}
+              {/* Bottom-Right Corner Handle (Dual Horizontal & Vertical) */}
+              <div
+                onMouseDown={(e) =>
+                  startResizing(e, card.id, card.width, card.height || 320, 'corner')
+                }
+                className="absolute bottom-1 right-1 h-6 w-6 cursor-se-resize flex items-end justify-end p-1 text-muted hover:text-primary transition-all z-20 group-hover:opacity-100 opacity-60 hover:scale-125"
+                title="Arrastrá para redimensionar ancho y alto (como una imagen)"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line x1="11" y1="3" x2="3" y2="11" />
+                  <line x1="11" y1="7" x2="7" y2="11" />
+                  <line x1="11" y1="11" x2="11" y2="11" />
+                </svg>
+              </div>
+
+              {/* Right Edge Handle (Horizontal Width Only) */}
+              <div
+                onMouseDown={(e) =>
+                  startResizing(e, card.id, card.width, card.height || 320, 'right')
+                }
+                className="absolute top-8 bottom-8 right-0 w-2 cursor-ew-resize hover:bg-primary/30 transition-colors z-10"
+                title="Arrastrá horizontalmente para cambiar ancho de columnas"
+              />
+
+              {/* Bottom Edge Handle (Vertical Height Only) */}
+              <div
+                onMouseDown={(e) =>
+                  startResizing(e, card.id, card.width, card.height || 320, 'bottom')
+                }
+                className="absolute bottom-0 left-8 right-8 h-2 cursor-ns-resize hover:bg-primary/30 transition-colors z-10"
+                title="Arrastrá verticalmente para cambiar la altura"
+              />
             </div>
           );
         })}
