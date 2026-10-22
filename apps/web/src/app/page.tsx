@@ -2,21 +2,17 @@
 
 import { useState } from 'react';
 import type { ConnectionConfig, DashboardDocument } from '@bi/contracts';
-import { DashboardCanvas } from '../components/dashboard/dashboard-canvas';
+import { Sidebar, type AppView } from '../components/layout/sidebar';
+import { DashboardCanvas, type DynamicCard } from '../components/dashboard/dashboard-canvas';
+import { DataBrowserView } from '../components/views/data-browser-view';
+import { VisualBuilderView } from '../components/views/visual-builder-view';
+import { ConnectionsView } from '../components/views/connections-view';
 import { DiagnosticModal } from '../components/connections/diagnostic-modal';
 import { ExcelUploadModal } from '../components/connections/excel-upload-modal';
 import {
   demoPostgresSource,
   type DataSource,
 } from '../lib/data-sources';
-import {
-  BarChart2,
-  Database,
-  FileSpreadsheet,
-  Layers,
-  Moon,
-  Sun,
-} from 'lucide-react';
 
 const initialDashboardDoc: DashboardDocument = {
   version: 1,
@@ -30,12 +26,19 @@ const initialDashboardDoc: DashboardDocument = {
 };
 
 export default function HomePage() {
+  const [currentView, setCurrentView] = useState<AppView>('dashboards');
   const [dataSources, setDataSources] = useState<readonly DataSource[]>([
     demoPostgresSource,
   ]);
+  const [dynamicCards, setDynamicCards] = useState<readonly DynamicCard[]>([]);
+  const [builderContext, setBuilderContext] = useState<{
+    sourceId?: string;
+    tableId?: string;
+  }>({});
+
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false); // Default to light mode as requested by user
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   const toggleDarkMode = () => {
     setIsDarkMode((prev) => {
@@ -67,71 +70,76 @@ export default function HomePage() {
     setDataSources((prev) => [customSource, ...prev]);
   };
 
+  const handleOpenBuilderWithTable = (sourceId: string, tableId: string) => {
+    setBuilderContext({ sourceId, tableId });
+    setCurrentView('builder');
+  };
+
+  const handleSelectTableFromConnections = (sourceId: string, tableId: string) => {
+    setBuilderContext({ sourceId, tableId });
+    setCurrentView('browse');
+  };
+
+  const handleSaveCardToDashboard = (card: DynamicCard) => {
+    setDynamicCards((prev) => [card, ...prev]);
+    setCurrentView('dashboards');
+  };
+
+  const handleDeleteCard = (index: number) => {
+    setDynamicCards((prev) => prev.filter((_, i) => i !== index));
+  };
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 border-b border-surface-border bg-surface/90 backdrop-blur-md shadow-sm">
-        <div className="flex h-16 items-center justify-between px-6 max-w-7xl mx-auto w-full">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-primary to-accent text-white shadow-md">
-                <BarChart2 className="h-5 w-5" />
-              </div>
-              <span className="text-base font-bold tracking-tight text-foreground">
-                Proyecto <span className="text-primary">BI</span>
-              </span>
-            </div>
+    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground font-sans antialiased">
+      {/* Persistent Metabase-grade Navigation Sidebar */}
+      <Sidebar
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
+        onOpenUploadExcel={() => setIsExcelModalOpen(true)}
+        activeSourcesCount={dataSources.length}
+      />
 
-            <nav className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-muted">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-subtle text-foreground shadow-sm">
-                <Layers className="h-3.5 w-3.5 text-primary" />
-                Dashboards
-              </button>
-              <button
-                onClick={() => setIsConnectionModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:text-foreground hover:bg-surface-subtle transition-colors"
-              >
-                <Database className="h-3.5 w-3.5 text-primary" />
-                Conectar BDD
-              </button>
-              <button
-                onClick={() => setIsExcelModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:text-foreground hover:bg-surface-subtle transition-colors"
-              >
-                <FileSpreadsheet className="h-3.5 w-3.5 text-success" />
-                Subir Excel/CSV
-              </button>
-            </nav>
-          </div>
+      {/* Main Workspace Area */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        {currentView === 'dashboards' && (
+          <DashboardCanvas
+            initialDocument={initialDashboardDoc}
+            dynamicCards={dynamicCards}
+            onDeleteCard={handleDeleteCard}
+            onNavigateToBuilder={() => setCurrentView('builder')}
+          />
+        )}
 
-          <div className="flex items-center gap-3">
-            {/* Active Sources Badge */}
-            <div className="hidden sm:flex items-center gap-2 rounded-full border border-surface-border bg-surface-subtle px-3 py-1 text-xs text-foreground font-medium shadow-sm">
-              <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-              <span>{dataSources.length} Fuentes activas ({dataSources[0]?.name})</span>
-            </div>
+        {currentView === 'browse' && (
+          <DataBrowserView
+            dataSources={dataSources}
+            onOpenBuilderWithTable={handleOpenBuilderWithTable}
+            onOpenUploadExcel={() => setIsExcelModalOpen(true)}
+          />
+        )}
 
-            {/* Dark/Light Mode Toggle */}
-            <button
-              onClick={toggleDarkMode}
-              className="rounded-xl border border-surface-border bg-surface p-2 text-muted hover:text-foreground hover:bg-surface-subtle transition-colors shadow-sm"
-              title={isDarkMode ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
-            >
-              {isDarkMode ? <Sun className="h-4 w-4 text-yellow-500" /> : <Moon className="h-4 w-4 text-slate-700" />}
-            </button>
-          </div>
-        </div>
-      </header>
+        {currentView === 'builder' && (
+          <VisualBuilderView
+            dataSources={dataSources}
+            preselectedSourceId={builderContext.sourceId}
+            preselectedTableId={builderContext.tableId}
+            onSaveToDashboard={handleSaveCardToDashboard}
+            onOpenUploadExcel={() => setIsExcelModalOpen(true)}
+          />
+        )}
 
-      {/* Main Canvas Area */}
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
-        <DashboardCanvas
-          initialDocument={initialDashboardDoc}
-          dataSources={dataSources}
-          onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
-          onOpenUploadExcel={() => setIsExcelModalOpen(true)}
-        />
-      </main>
+        {currentView === 'connections' && (
+          <ConnectionsView
+            dataSources={dataSources}
+            onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
+            onOpenUploadExcel={() => setIsExcelModalOpen(true)}
+            onSelectTable={handleSelectTableFromConnections}
+          />
+        )}
+      </div>
 
       {/* Diagnostic Connection Modal */}
       <DiagnosticModal
