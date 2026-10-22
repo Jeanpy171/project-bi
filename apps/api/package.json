@@ -1,0 +1,32 @@
+{
+  "name": "@bi/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -b",
+    "clean": "rimraf dist",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bi/kernel": "workspace:*",
+    "@bi/contracts": "workspace:*",
+    "@bi/query-ir": "workspace:*",
+    "@bi/connector-postgres": "workspace:*",
+    "hono": "^4.7.4",
+    "@hono/node-server": "^1.13.8",
+    "@hono/zod-openapi": "^0.19.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "rimraf": "^6.0.1",
+    "vitest": "^3.0.7"
+  }
+}

@@ -18,63 +18,85 @@ export const ConnectionConfigSchema = z.object({
 
 export type ConnectionConfig = z.infer<typeof ConnectionConfigSchema>;
 
-export type DiagnosticStepCode =
-  | 'DNS_RESOLUTION'
-  | 'TCP_PORT_REACHABILITY'
-  | 'DOCKER_LOCALHOST_CHECK'
-  | 'AUTHENTICATION'
-  | 'SSL_HANDSHAKE'
-  | 'READONLY_PERMISSION_CHECK';
+export const DiagnosticStepCodeSchema = z.enum([
+  'DNS_RESOLUTION',
+  'TCP_PORT_REACHABILITY',
+  'DOCKER_LOCALHOST_CHECK',
+  'AUTHENTICATION',
+  'SSL_HANDSHAKE',
+  'READONLY_PERMISSION_CHECK',
+]);
 
-export interface DiagnosticStep {
-  readonly code: DiagnosticStepCode;
-  readonly label: string;
-  readonly status: 'passed' | 'failed' | 'warning' | 'skipped';
-  readonly message?: string;
-  readonly suggestedFix?: string;
-}
+export type DiagnosticStepCode = z.infer<typeof DiagnosticStepCodeSchema>;
 
-export interface DiagnosticReport {
-  readonly isHealthy: boolean;
-  readonly latencyMs: number;
-  readonly steps: readonly DiagnosticStep[];
-}
+export const DiagnosticStepSchema = z.object({
+  code: DiagnosticStepCodeSchema,
+  label: z.string(),
+  status: z.enum(['passed', 'failed', 'warning', 'skipped']),
+  message: z.string().optional(),
+  suggestedFix: z.string().optional(),
+});
 
-export interface ColumnMetadata {
-  readonly name: string;
-  readonly dataType: string;
-  readonly isNullable: boolean;
-  readonly isPrimaryKey: boolean;
-  readonly foreignKeyTo?: {
-    readonly table: string;
-    readonly column: string;
-  };
-}
+export type DiagnosticStep = z.infer<typeof DiagnosticStepSchema>;
 
-export interface TableMetadata {
-  readonly schema: string;
-  readonly name: string;
-  readonly description?: string;
-  readonly rowCountEstimate?: number;
-  readonly columns: readonly ColumnMetadata[];
-}
+export const DiagnosticReportSchema = z.object({
+  isHealthy: z.boolean(),
+  latencyMs: z.number(),
+  steps: z.array(DiagnosticStepSchema),
+});
 
-export interface SchemaIntrospection {
-  readonly tables: readonly TableMetadata[];
-  readonly introspectedAt: string;
-}
+export type DiagnosticReport = z.infer<typeof DiagnosticReportSchema>;
+
+export const ColumnMetadataSchema = z.object({
+  name: z.string(),
+  dataType: z.string(),
+  isNullable: z.boolean(),
+  isPrimaryKey: z.boolean(),
+  foreignKeyTo: z
+    .object({
+      table: z.string(),
+      column: z.string(),
+    })
+    .optional(),
+});
+
+export type ColumnMetadata = z.infer<typeof ColumnMetadataSchema>;
+
+export const TableMetadataSchema = z.object({
+  schema: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  rowCountEstimate: z.number().optional(),
+  columns: z.array(ColumnMetadataSchema),
+});
+
+export type TableMetadata = z.infer<typeof TableMetadataSchema>;
+
+export const SchemaIntrospectionSchema = z.object({
+  tables: z.array(TableMetadataSchema),
+  introspectedAt: z.string(),
+});
+
+export type SchemaIntrospection = z.infer<typeof SchemaIntrospectionSchema>;
 
 export interface QueryExecutionOptions {
   readonly timeoutMs?: number;
   readonly limit?: number;
 }
 
-export interface QueryResultData {
-  readonly columns: readonly { readonly name: string; readonly type: string }[];
-  readonly rows: readonly (readonly unknown[])[];
-  readonly rowCount: number;
-  readonly executionDurationMs: number;
-}
+export const QueryResultDataSchema = z.object({
+  columns: z.array(
+    z.object({
+      name: z.string(),
+      type: z.string(),
+    }),
+  ),
+  rows: z.array(z.array(z.unknown())),
+  rowCount: z.number(),
+  executionDurationMs: z.number(),
+});
+
+export type QueryResultData = z.infer<typeof QueryResultDataSchema>;
 
 export type ConnectorError =
   | { readonly kind: 'CONNECTION_FAILED'; readonly diagnostic: DiagnosticReport }
