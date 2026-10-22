@@ -17,6 +17,7 @@ import {
 } from '../../lib/chart-theme';
 import { CardExpandModal } from './card-expand-modal';
 import { ShareDashboardModal } from './share-dashboard-modal';
+import { ExportPdfModal } from './export-pdf-modal';
 import {
   ArrowDown,
   ArrowUp,
@@ -30,22 +31,42 @@ import {
   Heading,
   Maximize2,
   Plus,
+  Printer,
   RefreshCw,
   Sliders,
   Share2,
   ShoppingBag,
   Sparkles,
+  Target,
   Trash2,
   TrendingUp,
+  Users,
   Wallet,
+  Zap,
 } from 'lucide-react';
 
 export type CardWidth = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+export type TitleFontSize = 'sm' | 'base' | 'lg' | 'xl';
+export type TitleFontWeight = 'medium' | 'bold' | 'extrabold';
+export type BadgeStyle = 'subtle' | 'solid' | 'pulse' | 'pill_tint' | 'pill_gradient' | 'pill_dark';
+export type BadgePosition = 'inline' | 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left';
+export type HeaderPosition = 'top' | 'bottom';
+export type HeaderAlignment = 'left' | 'center' | 'right';
+export type ColorMode = 'gradient' | 'palette' | 'solid';
+export type CardTheme = 'standard' | 'tinted' | 'gradient' | 'glass';
 
 export interface GridCardItem {
   readonly id: string;
   title: string;
+  titleSize?: TitleFontSize;
+  titleFontSize?: number;
+  titleWeight?: TitleFontWeight;
   subtitle?: string;
+  subtitleFontSize?: number;
+  cardTheme?: CardTheme;
+  headerPosition?: HeaderPosition;
+  headerAlignment?: HeaderAlignment;
+  colorMode?: ColorMode;
   chartKind: DashboardCard['chartKind'] | 'kpi' | 'plan_cuentas' | 'section_header';
   summaryValue?: string;
   trendText?: string;
@@ -55,17 +76,36 @@ export interface GridCardItem {
   width: CardWidth;
   height?: number;
   badge?: string;
+  badgeStyle?: BadgeStyle;
+  badgePosition?: BadgePosition;
   customColor?: string;
-  kpiIcon?: 'dollar' | 'orders' | 'ticket' | 'wallet';
+  accentColor?: string;
+  kpiIcon?: 'dollar' | 'orders' | 'ticket' | 'wallet' | 'trend' | 'users' | 'zap' | 'target';
+  goalValue?: number;
 }
 
 export interface DynamicCard {
   readonly title: string;
-  readonly chartKind: DashboardCard['chartKind'];
-  readonly echartsOption: echarts.EChartsOption;
+  readonly titleSize?: TitleFontSize;
+  readonly titleFontSize?: number;
+  readonly titleWeight?: TitleFontWeight;
+  readonly subtitle?: string;
+  readonly subtitleFontSize?: number;
+  readonly cardTheme?: CardTheme;
+  readonly headerPosition?: HeaderPosition;
+  readonly headerAlignment?: HeaderAlignment;
+  readonly colorMode?: ColorMode;
+  readonly chartKind: DashboardCard['chartKind'] | 'kpi' | 'plan_cuentas' | 'section_header';
+  readonly echartsOption?: echarts.EChartsOption;
   readonly sourceName: string;
   readonly tableName: string;
   readonly summaryValue?: string;
+  readonly badge?: string;
+  readonly badgeStyle?: BadgeStyle;
+  readonly badgePosition?: BadgePosition;
+  readonly accentColor?: string;
+  readonly kpiIcon?: 'dollar' | 'orders' | 'ticket' | 'wallet' | 'trend' | 'users' | 'zap' | 'target';
+  readonly goalValue?: number;
 }
 
 interface DashboardCanvasProps {
@@ -76,7 +116,7 @@ interface DashboardCanvasProps {
   readonly isDarkMode: boolean;
 }
 
-const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v7';
+const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v8';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -93,19 +133,113 @@ const getContentLimits = (kind: GridCardItem['chartKind']): ContentLimits => {
   switch (kind) {
     case 'kpi':
       return { minWidth: 3, minHeight: 140, maxWidth: 6, maxHeight: 280 };
+    case 'gauge':
+      return { minWidth: 3, minHeight: 220, maxWidth: 6, maxHeight: 450 };
     case 'donut':
       return { minWidth: 3, minHeight: 220, maxWidth: 12, maxHeight: 650 };
+    case 'funnel':
+      return { minWidth: 4, minHeight: 240, maxWidth: 12, maxHeight: 650 };
     case 'bar_grouped':
+    case 'bar_horizontal':
+    case 'bar_stacked':
       return { minWidth: 4, minHeight: 220, maxWidth: 12, maxHeight: 650 };
     case 'line':
+    case 'area':
       return { minWidth: 4, minHeight: 220, maxWidth: 12, maxHeight: 650 };
     case 'plan_cuentas':
+    case 'table_hierarchical':
       return { minWidth: 5, minHeight: 220, maxWidth: 12, maxHeight: 650 };
     case 'section_header':
       return { minWidth: 12, minHeight: 50, maxWidth: 12, maxHeight: 120 };
     default:
       return { minWidth: 3, minHeight: 160, maxWidth: 12, maxHeight: 650 };
   }
+};
+
+export const renderCardBadge = (card: GridCardItem) => {
+  if (!card.badge) return null;
+  const accent = card.accentColor || '#2563EB';
+  const style = card.badgeStyle || 'pill_tint';
+
+  if (style === 'pill_tint') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider shadow-xs transition-all border shrink-0"
+        style={{
+          backgroundColor: `${accent}18`,
+          borderColor: `${accent}45`,
+          color: accent,
+        }}
+      >
+        <span
+          className="h-1.5 w-1.5 rounded-full shrink-0 shadow-xs"
+          style={{ backgroundColor: accent }}
+        />
+        <span>{card.badge}</span>
+      </span>
+    );
+  }
+
+  if (style === 'pill_gradient') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all border border-white/25 shrink-0"
+        style={{
+          background: `linear-gradient(135deg, ${accent}, #1e293b)`,
+        }}
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-white/90 shrink-0" />
+        <span>{card.badge}</span>
+      </span>
+    );
+  }
+
+  if (style === 'pill_dark') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider bg-slate-900 text-white dark:bg-slate-800 border border-slate-700 shadow-xs shrink-0">
+        <span
+          className="h-1.5 w-1.5 rounded-full shrink-0"
+          style={{ backgroundColor: accent }}
+        />
+        <span>{card.badge}</span>
+      </span>
+    );
+  }
+
+  if (style === 'solid') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider text-white shadow-xs shrink-0"
+        style={{ backgroundColor: accent }}
+      >
+        <span>{card.badge}</span>
+      </span>
+    );
+  }
+
+  if (style === 'pulse') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-surface-subtle text-foreground border border-surface-border shadow-xs shrink-0">
+        <span className="relative flex h-2 w-2">
+          <span
+            className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+            style={{ backgroundColor: accent }}
+          />
+          <span
+            className="relative inline-flex rounded-full h-2 w-2"
+            style={{ backgroundColor: accent }}
+          />
+        </span>
+        <span>{card.badge}</span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider bg-surface-subtle text-muted hover:text-foreground border border-surface-border shrink-0">
+      <span>{card.badge}</span>
+    </span>
+  );
 };
 
 export function DashboardCanvas({
@@ -125,10 +259,12 @@ export function DashboardCanvas({
 
   const [expandedCard, setExpandedCard] = useState<GridCardItem | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isExportPdfModalOpen, setIsExportPdfModalOpen] = useState(false);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [openWidthPickerCardId, setOpenWidthPickerCardId] = useState<string | null>(null);
 
   const gridContainerRef = useRef<HTMLDivElement>(null);
+  const printableReportRef = useRef<HTMLDivElement>(null);
   const cardDomRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevCardRects = useRef<Map<string, DOMRect>>(new Map());
 
@@ -204,6 +340,9 @@ export function DashboardCanvas({
         width: 3,
         height: 180,
         badge: 'Meta Superada',
+        badgeStyle: 'pill_tint',
+        badgePosition: 'inline',
+        accentColor: '#2563EB',
         kpiIcon: 'dollar',
       },
       {
@@ -215,6 +354,9 @@ export function DashboardCanvas({
         width: 3,
         height: 180,
         badge: 'Operativo',
+        badgeStyle: 'pill_tint',
+        badgePosition: 'inline',
+        accentColor: '#7C3AED',
         kpiIcon: 'orders',
       },
       {
@@ -225,6 +367,7 @@ export function DashboardCanvas({
         trendText: 'Promedio por cliente activo',
         width: 3,
         height: 180,
+        accentColor: '#059669',
         kpiIcon: 'ticket',
       },
       {
@@ -236,6 +379,9 @@ export function DashboardCanvas({
         width: 3,
         height: 180,
         badge: 'Métrica Clave',
+        badgeStyle: 'pill_tint',
+        badgePosition: 'inline',
+        accentColor: '#D97706',
         kpiIcon: 'wallet',
       },
       {
@@ -252,6 +398,7 @@ export function DashboardCanvas({
         chartKind: 'bar_grouped',
         width: 8,
         height: 350,
+        accentColor: '#2563EB',
       },
       {
         id: 'chart-distribucion-geo',
@@ -260,6 +407,7 @@ export function DashboardCanvas({
         chartKind: 'donut',
         width: 4,
         height: 350,
+        accentColor: '#0EA5E9',
       },
       {
         id: 'table-plan-cuentas',
@@ -269,6 +417,9 @@ export function DashboardCanvas({
         width: 6,
         height: 350,
         badge: 'Pixel-Perfect',
+        badgeStyle: 'pill_tint',
+        badgePosition: 'top_right',
+        accentColor: '#0EA5E9',
       },
       {
         id: 'chart-tendencia-ingresos',
@@ -277,6 +428,7 @@ export function DashboardCanvas({
         chartKind: 'line',
         width: 6,
         height: 350,
+        accentColor: '#10B981',
       },
     ],
     [],
@@ -306,6 +458,69 @@ export function DashboardCanvas({
     }
     return defaultCards;
   });
+
+  // Synchronize incoming dynamicCards from Visual Builder
+  useEffect(() => {
+    if (!dynamicCards || dynamicCards.length === 0) return;
+
+    setCards((prevCards) => {
+      const existingIds = new Set(prevCards.map((c) => c.id));
+      const newItems: GridCardItem[] = [];
+
+      dynamicCards.forEach((dc, index) => {
+        const cardId = `dynamic-${dc.title.replace(/\s+/g, '-').toLowerCase()}-${index}`;
+        if (!existingIds.has(cardId)) {
+          newItems.push({
+            id: cardId,
+            title: dc.title,
+            titleSize: dc.titleSize,
+            titleFontSize: dc.titleFontSize,
+            titleWeight: dc.titleWeight,
+            subtitle: dc.subtitle,
+            subtitleFontSize: dc.subtitleFontSize,
+            cardTheme: dc.cardTheme,
+            headerPosition: dc.headerPosition,
+            headerAlignment: dc.headerAlignment,
+            colorMode: dc.colorMode,
+            chartKind: dc.chartKind,
+            echartsOption: dc.echartsOption,
+            sourceName: dc.sourceName,
+            tableName: dc.tableName,
+            summaryValue: dc.summaryValue,
+            badge: dc.badge,
+            badgeStyle: dc.badgeStyle,
+            badgePosition: dc.badgePosition,
+            accentColor: dc.accentColor,
+            kpiIcon: dc.kpiIcon,
+            goalValue: dc.goalValue,
+            width: dc.chartKind === 'kpi' ? 3 : dc.chartKind === 'gauge' ? 4 : 6,
+            height: dc.chartKind === 'kpi' ? 180 : 340,
+          });
+        }
+      });
+
+      if (newItems.length === 0) return prevCards;
+
+      const sectionGraficasIdx = prevCards.findIndex((c) => c.id === 'section-graficas');
+      if (sectionGraficasIdx !== -1) {
+        const copy = [...prevCards];
+        copy.splice(sectionGraficasIdx + 1, 0, ...newItems);
+        return copy;
+      }
+      return [...newItems, ...prevCards];
+    });
+  }, [dynamicCards]);
+
+  // Persist cards layout and edits
+  useEffect(() => {
+    if (typeof window !== 'undefined' && cards.length > 0) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+      } catch {
+        // Ignore quota/storage errors
+      }
+    }
+  }, [cards]);
 
   // =========================================================================
   // FLIP ANIMATION ENGINE: Organic Layout Sliding Transitions
@@ -372,13 +587,16 @@ export function DashboardCanvas({
           newItems.push({
             id,
             title: dc.title,
-            subtitle: `Origen: ${dc.sourceName} • ${dc.tableName}`,
+            subtitle: dc.subtitle || `Origen: ${dc.sourceName} • ${dc.tableName}`,
             chartKind: dc.chartKind,
             summaryValue: dc.summaryValue,
             echartsOption: dc.echartsOption,
-            width: dc.chartKind === 'kpi' ? 4 : 6,
-            height: dc.chartKind === 'kpi' ? 180 : 350,
-            badge: 'Personalizada',
+            width: dc.chartKind === 'kpi' ? 3 : dc.chartKind === 'gauge' ? 4 : 6,
+            height: dc.chartKind === 'kpi' ? 180 : 340,
+            badge: dc.badge || 'Personalizada',
+            accentColor: dc.accentColor,
+            kpiIcon: dc.kpiIcon,
+            goalValue: dc.goalValue,
           });
         }
       });
@@ -630,85 +848,109 @@ export function DashboardCanvas({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 lg:px-8 py-6 w-full space-y-6 bg-background">
-      {/* Top Action Bar (Clean Executive Metabase Style) */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-surface-border">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">{doc.title}</h1>
-            <span className="rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-semibold text-success flex items-center gap-1.5 border border-success/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-              Tiempo Real (SSE)
-            </span>
-            {isEditMode && (
-              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5 border border-primary/20 animate-pulse">
-                <Sparkles className="h-3.5 w-3.5" />
-                Modo Edición Activo
+    <div className="flex-1 overflow-y-auto px-6 lg:px-8 py-6 w-full space-y-6 bg-slate-100/70 dark:bg-background">
+      {/* Printable Report Wrapper exclusively targeting Dashboard content */}
+      <div
+        ref={printableReportRef}
+        id="dashboard-printable-report"
+        className="dashboard-printable-area w-full space-y-6"
+      >
+        {/* Top Action Bar (Clean Executive Metabase Style) */}
+        <div
+          className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-surface-border no-print"
+          data-html2canvas-ignore="true"
+        >
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">{doc.title}</h1>
+              <span className="rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-semibold text-success flex items-center gap-1.5 border border-success/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                Tiempo Real (SSE)
               </span>
-            )}
+              {isEditMode && (
+                <span
+                  className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5 border border-primary/20 animate-pulse no-print"
+                  data-html2canvas-ignore="true"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Modo Edición Activo
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted mt-0.5">{doc.description}</p>
           </div>
-          <p className="text-sm text-muted mt-0.5">{doc.description}</p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Dashboard Period Filter */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-border bg-surface text-xs text-muted shadow-sm">
-            <Calendar className="h-3.5 w-3.5 text-primary" />
-            <span className="font-semibold text-foreground">Este trimestre</span>
+          <div
+            className="flex flex-wrap items-center gap-2 no-print"
+            data-html2canvas-ignore="true"
+          >
+            {/* Dashboard Period Filter */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-border bg-surface text-xs text-muted shadow-sm">
+              <Calendar className="h-3.5 w-3.5 text-primary" />
+              <span className="font-semibold text-foreground">Este trimestre</span>
+            </div>
+
+            <button
+              onClick={handleRefresh}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>Refrescar</span>
+            </button>
+
+            <button
+              onClick={handleAddSectionHeader}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              title="Añadir divisor de sección"
+            >
+              <Heading className="h-3.5 w-3.5 text-primary" />
+              <span>+ Encabezado</span>
+            </button>
+
+            {/* Toggle Edit Mode Button */}
+            <button
+              onClick={() => {
+                setIsEditMode((prev) => !prev);
+                setEditingCardId(null);
+                setOpenWidthPickerCardId(null);
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
+                isEditMode
+                  ? 'border-primary bg-primary text-white shadow-primary/20'
+                  : 'border-surface-border bg-surface text-foreground hover:bg-surface-subtle'
+              }`}
+            >
+              {isEditMode ? <Check className="h-3.5 w-3.5" /> : <Edit3 className="h-3.5 w-3.5" />}
+              <span>{isEditMode ? 'Terminar Edición' : 'Personalizar Tablero'}</span>
+            </button>
+
+            <button
+              onClick={onNavigateToBuilder}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary-hover transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Plus className="h-4 w-4" />
+              <span>+ Añadir Pregunta</span>
+            </button>
+
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface border border-surface-border text-foreground text-xs font-semibold hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              title="Compartir o exportar tablero"
+            >
+              <Share2 className="h-3.5 w-3.5 text-muted" />
+              <span>Compartir</span>
+            </button>
+
+            <button
+              onClick={() => setIsExportPdfModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface border border-surface-border text-foreground text-xs font-semibold hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              title="Exportar reporte ejecutivo en PDF descargable"
+            >
+              <Printer className="h-3.5 w-3.5 text-primary" />
+              <span>Exportar PDF</span>
+            </button>
           </div>
-
-          <button
-            onClick={handleRefresh}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>Refrescar</span>
-          </button>
-
-          <button
-            onClick={handleAddSectionHeader}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
-            title="Añadir divisor de sección"
-          >
-            <Heading className="h-3.5 w-3.5 text-primary" />
-            <span>+ Encabezado</span>
-          </button>
-
-          {/* Toggle Edit Mode Button */}
-          <button
-            onClick={() => {
-              setIsEditMode((prev) => !prev);
-              setEditingCardId(null);
-              setOpenWidthPickerCardId(null);
-            }}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
-              isEditMode
-                ? 'border-primary bg-primary text-white shadow-primary/20'
-                : 'border-surface-border bg-surface text-foreground hover:bg-surface-subtle'
-            }`}
-          >
-            {isEditMode ? <Check className="h-3.5 w-3.5" /> : <Edit3 className="h-3.5 w-3.5" />}
-            <span>{isEditMode ? 'Terminar Edición' : 'Personalizar Tablero'}</span>
-          </button>
-
-          <button
-            onClick={onNavigateToBuilder}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary-hover transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <Plus className="h-4 w-4" />
-            <span>+ Añadir Pregunta</span>
-          </button>
-
-          <button
-            onClick={() => setIsShareModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface border border-surface-border text-foreground text-xs font-semibold hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
-            title="Compartir o exportar tablero"
-          >
-            <Share2 className="h-3.5 w-3.5 text-muted" />
-            <span>Compartir</span>
-          </button>
         </div>
-      </div>
 
       {/* Unified 12-Column Flexible Grid */}
       <div
@@ -781,7 +1023,7 @@ export function DashboardCanvas({
                         </div>
                       ) : (
                         <div>
-                          <h2 className="text-base font-bold text-foreground tracking-tight">
+                          <h2 className="text-base font-bold text-foreground tracking-tight pt-0.5 leading-snug">
                             {card.title}
                           </h2>
                           {card.subtitle && (
@@ -838,9 +1080,17 @@ export function DashboardCanvas({
               onDragStart={(e) => handleDragStart(card.id, e)}
               onDragOver={(e) => handleDragOver(e, card.id)}
               onDragEnd={handleDragEnd}
-              className={`${colSpanClass} min-w-0 rounded-3xl bg-surface/95 backdrop-blur-xl p-5 flex flex-col justify-between relative group border border-slate-300 dark:border-slate-700/80 shadow-[0_2px_12px_rgba(0,0,0,0.03),0_1px_2px_rgba(0,0,0,0.02)] ${
+              className={`${colSpanClass} min-w-0 rounded-3xl p-5 flex flex-col justify-between relative group card-executive ${
+                card.cardTheme === 'gradient'
+                  ? 'text-white'
+                  : card.cardTheme === 'glass'
+                  ? 'bg-white/80 backdrop-blur-2xl border border-white/40 dark:border-white/10 dark:bg-slate-900/80'
+                  : card.cardTheme === 'tinted'
+                  ? 'bg-white dark:bg-slate-900 border'
+                  : 'bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800'
+              } ${
                 !draggedCardId && !resizingCard
-                  ? 'hover:shadow-xl hover:border-primary/50 hover:-translate-y-0.5 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'
+                  ? 'hover:shadow-2xl hover:border-primary/50 hover:-translate-y-0.5 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'
                   : 'transition-[border-color,box-shadow,opacity,background-color] duration-200'
               } ${
                 isBeingDragged
@@ -854,30 +1104,61 @@ export function DashboardCanvas({
               style={{
                 height: card.height ? `${card.height}px` : undefined,
                 minHeight: `${limits.minHeight}px`,
+                borderTop:
+                  card.chartKind === 'kpi'
+                    ? `3.5px solid ${card.accentColor || '#2563EB'}`
+                    : undefined,
+                background:
+                  card.cardTheme === 'gradient'
+                    ? `linear-gradient(135deg, ${card.accentColor || '#2563EB'}, #1e293b)`
+                    : card.cardTheme === 'tinted'
+                    ? `linear-gradient(135deg, hsl(var(--surface)) 70%, ${card.accentColor || '#2563EB'}15 100%)`
+                    : undefined,
+                borderColor:
+                  card.cardTheme === 'tinted'
+                    ? `${card.accentColor || '#2563EB'}60`
+                    : card.cardTheme === 'gradient'
+                    ? `${card.accentColor || '#2563EB'}80`
+                    : undefined,
               }}
             >
               {/* Dimension Tooltip when actively resizing */}
               {isBeingResized && (
                 <div
-                  className={`absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center gap-1.5 pointer-events-none animate-in fade-in duration-200 ${
-                    resizingCard?.hitLimit
-                      ? 'bg-amber-500 text-white animate-pulse'
-                      : 'bg-foreground text-background'
-                  }`}
+                  className="absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center gap-1.5 pointer-events-none animate-in fade-in duration-200 bg-foreground text-background"
                 >
                   <span>📐 {card.width} columnas ({Math.round((card.width / 12) * 100)}%)</span>
                   <span>•</span>
                   <span>{card.height}px</span>
-                  {resizingCard?.hitLimit && (
-                    <span className="text-[10px] bg-black/20 px-1.5 py-0.2 rounded-full ml-1">Límite óptimo</span>
-                  )}
                 </div>
               )}
 
-              {/* Card Header (Clean & Uncluttered: ZERO Button Overlap) */}
-              <div className="mb-2 pb-2.5 border-b border-surface-border/70 shrink-0">
-                <div className="flex items-center justify-between gap-1.5 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              {/* Card Header (Clean & Uncluttered: ZERO Button Overlap, Top or Bottom) */}
+              <div
+                className={`${
+                  card.headerPosition === 'bottom'
+                    ? 'order-last mt-2 pt-2.5 border-t border-surface-border/70'
+                    : 'order-first mb-2 pb-2.5 border-b border-surface-border/70'
+                } shrink-0`}
+              >
+                <div
+                  className={`flex items-center gap-1.5 min-w-0 ${
+                    card.headerAlignment === 'center'
+                      ? 'justify-center'
+                      : card.headerAlignment === 'right'
+                      ? 'justify-end'
+                      : 'justify-between'
+                  }`}
+                >
+                  <div
+                    className={`flex items-center gap-1.5 flex-1 min-w-0 ${
+                      card.headerAlignment === 'center'
+                        ? 'justify-center text-center'
+                        : card.headerAlignment === 'right'
+                        ? 'justify-end text-right'
+                        : 'justify-start text-left'
+                    }`}
+                  >
                     {/* Drag Handle in Edit Mode */}
                     {isEditMode && (
                       <div
@@ -888,46 +1169,111 @@ export function DashboardCanvas({
                       </div>
                     )}
 
-                    <div className="flex-1 min-w-0">
+                    <div
+                      className={`flex-1 min-w-0 flex flex-col ${
+                        card.headerAlignment === 'center'
+                          ? 'items-center'
+                          : card.headerAlignment === 'right'
+                          ? 'items-end'
+                          : 'items-start'
+                      }`}
+                    >
                       {isEditMode && isEditingThisCard ? (
-                        <div className="flex items-center gap-1 w-full min-w-0">
-                          <input
-                            type="text"
-                            value={card.title}
-                            onChange={(e) =>
-                              updateCardField(card.id, { title: e.target.value })
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') setEditingCardId(null);
-                            }}
-                            autoFocus
-                            placeholder="Título..."
-                            className="w-full min-w-0 px-2 py-0.5 rounded border border-surface-border bg-surface text-xs sm:text-sm font-bold text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
-                          />
-                          <button
-                            onClick={() => setEditingCardId(null)}
-                            className="p-1 rounded text-muted hover:text-foreground shrink-0 transition-transform active:scale-90"
-                            title="Guardar"
-                          >
-                            <Check className="h-3.5 w-3.5 text-success" />
-                          </button>
+                        <div className="flex flex-col gap-1 w-full min-w-0">
+                          <div className="flex items-center gap-1 w-full min-w-0">
+                            <input
+                              type="text"
+                              value={card.title}
+                              onChange={(e) =>
+                                updateCardField(card.id, { title: e.target.value })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') setEditingCardId(null);
+                              }}
+                              autoFocus
+                              placeholder="Título..."
+                              className="w-full min-w-0 px-2 py-0.5 rounded border border-surface-border bg-surface text-xs sm:text-sm font-bold text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                            />
+                            <button
+                              onClick={() => setEditingCardId(null)}
+                              className="p-1 rounded text-muted hover:text-foreground shrink-0 transition-transform active:scale-90"
+                              title="Guardar"
+                            >
+                              <Check className="h-3.5 w-3.5 text-success" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-1 w-full min-w-0">
+                            <input
+                              type="text"
+                              value={card.subtitle || ''}
+                              onChange={(e) =>
+                                updateCardField(card.id, { subtitle: e.target.value })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') setEditingCardId(null);
+                              }}
+                              placeholder="Subtítulo..."
+                              className="flex-1 min-w-0 px-1.5 py-0.5 rounded border border-surface-border bg-surface text-[10px] text-muted focus:ring-1 focus:ring-primary focus:outline-none"
+                            />
+                            <input
+                              type="text"
+                              value={card.badge || ''}
+                              onChange={(e) =>
+                                updateCardField(card.id, { badge: e.target.value })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') setEditingCardId(null);
+                              }}
+                              placeholder="Badge..."
+                              className="w-20 px-1.5 py-0.5 rounded border border-surface-border bg-surface text-[9px] uppercase font-bold text-muted focus:ring-1 focus:ring-primary focus:outline-none"
+                            />
+                          </div>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1.5 min-w-0">
+                        <div
+                          className={`flex items-center gap-1.5 min-w-0 flex-wrap ${
+                            card.headerAlignment === 'center'
+                              ? 'justify-center'
+                              : card.headerAlignment === 'right'
+                              ? 'justify-end'
+                              : 'justify-start'
+                          }`}
+                        >
+                          {/* Top-Left Badge */}
+                          {card.badge && card.badgePosition === 'top_left' && renderCardBadge(card)}
+
                           <h3
                             onClick={() => isEditMode && setEditingCardId(card.id)}
-                            className={`text-xs sm:text-sm font-bold text-foreground tracking-tight truncate ${
+                            style={card.titleFontSize ? { fontSize: `${card.titleFontSize}px` } : undefined}
+                            className={`tracking-tight truncate pt-0.5 leading-snug ${
+                              card.cardTheme === 'gradient' ? 'text-white' : 'text-foreground'
+                            } ${
+                              !card.titleFontSize
+                                ? card.titleSize === 'sm'
+                                  ? 'text-xs'
+                                  : card.titleSize === 'lg'
+                                  ? 'text-sm sm:text-base'
+                                  : card.titleSize === 'xl'
+                                  ? 'text-base sm:text-lg'
+                                  : 'text-xs sm:text-sm'
+                                : ''
+                            } ${
+                              card.titleWeight === 'medium'
+                                ? 'font-medium'
+                                : card.titleWeight === 'extrabold'
+                                ? 'font-black'
+                                : 'font-bold'
+                            } ${
                               isEditMode ? 'cursor-pointer hover:text-primary transition-colors' : ''
                             }`}
                             title={card.title}
                           >
                             {card.title}
                           </h3>
-                          {card.badge && (
-                            <span className="hidden sm:inline-block px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase tracking-wider bg-surface-subtle text-foreground border border-surface-border shrink-0">
-                              {card.badge}
-                            </span>
-                          )}
+
+                          {/* Inline Badge */}
+                          {card.badge && (card.badgePosition === 'inline' || (!card.badgePosition && card.badge)) && renderCardBadge(card)}
+
                           {isEditMode && (
                             <button
                               onClick={() => setEditingCardId(card.id)}
@@ -940,21 +1286,47 @@ export function DashboardCanvas({
                         </div>
                       )}
                       {!isEditingThisCard && card.subtitle && (
-                        <p className="text-[10px] sm:text-[11px] text-muted truncate">{card.subtitle}</p>
+                        <p
+                          style={card.subtitleFontSize ? { fontSize: `${card.subtitleFontSize}px` } : undefined}
+                          className={`text-[10px] sm:text-[11px] truncate ${
+                            card.cardTheme === 'gradient' ? 'text-white/80' : 'text-muted'
+                          } ${
+                            card.headerAlignment === 'center'
+                              ? 'text-center'
+                              : card.headerAlignment === 'right'
+                              ? 'text-right'
+                              : 'text-left'
+                          }`}
+                        >
+                          {card.subtitle}
+                        </p>
                       )}
                     </div>
                   </div>
 
                   {/* Actions Header Toolbar: Compact & Non-Overlapping */}
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Top-Right Badge if configured */}
+                    {card.badge && card.badgePosition === 'top_right' && renderCardBadge(card)}
+
                     {/* Micro-Icon for KPI cards */}
                     {card.chartKind === 'kpi' && !isEditMode && (
-                      <div className="p-1.5 rounded-xl bg-surface-subtle border border-surface-border text-foreground/80">
-                        {card.kpiIcon === 'dollar' && <DollarSign className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
-                        {card.kpiIcon === 'orders' && <ShoppingBag className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
-                        {card.kpiIcon === 'ticket' && <CreditCard className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />}
-                        {card.kpiIcon === 'wallet' && <Wallet className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />}
-                        {!card.kpiIcon && <TrendingUp className="h-3.5 w-3.5 text-primary" />}
+                      <div
+                        className="p-1.5 rounded-xl border transition-colors"
+                        style={{
+                          borderColor: card.accentColor ? `${card.accentColor}40` : undefined,
+                          backgroundColor: card.accentColor ? `${card.accentColor}15` : undefined,
+                          color: card.accentColor || undefined,
+                        }}
+                      >
+                        {card.kpiIcon === 'dollar' && <DollarSign className="h-3.5 w-3.5" />}
+                        {card.kpiIcon === 'orders' && <ShoppingBag className="h-3.5 w-3.5" />}
+                        {card.kpiIcon === 'ticket' && <CreditCard className="h-3.5 w-3.5" />}
+                        {card.kpiIcon === 'wallet' && <Wallet className="h-3.5 w-3.5" />}
+                        {card.kpiIcon === 'users' && <Users className="h-3.5 w-3.5" />}
+                        {card.kpiIcon === 'zap' && <Zap className="h-3.5 w-3.5" />}
+                        {card.kpiIcon === 'target' && <Target className="h-3.5 w-3.5" />}
+                        {(!card.kpiIcon || card.kpiIcon === 'trend') && <TrendingUp className="h-3.5 w-3.5" />}
                       </div>
                     )}
 
@@ -1037,7 +1409,19 @@ export function DashboardCanvas({
 
                     {/* Expand Button with Smooth Elevation and Ripple */}
                     <button
-                      onClick={() => setExpandedCard(card)}
+                      onClick={() => {
+                        const resolvedOption =
+                          card.echartsOption ||
+                          (card.chartKind === 'donut'
+                            ? defaultDonutOption
+                            : card.chartKind === 'line'
+                            ? defaultLineOption
+                            : defaultBarOption);
+                        setExpandedCard({
+                          ...card,
+                          echartsOption: resolvedOption,
+                        });
+                      }}
                       className="text-muted hover:text-foreground p-1 sm:p-1.5 rounded-xl hover:bg-surface-subtle hover:text-primary transition-all duration-200 hover:scale-110 active:scale-90"
                       title="Expandir a pantalla completa"
                     >
@@ -1063,27 +1447,25 @@ export function DashboardCanvas({
                   </div>
                 )}
 
-                {card.chartKind === 'bar_grouped' && (
+                {(card.chartKind === 'bar_grouped' ||
+                  card.chartKind === 'bar_horizontal' ||
+                  card.chartKind === 'bar_stacked' ||
+                  card.chartKind === 'donut' ||
+                  card.chartKind === 'line' ||
+                  card.chartKind === 'area' ||
+                  card.chartKind === 'funnel' ||
+                  card.chartKind === 'gauge') && (
                   <EChartsView
                     isDarkMode={isDarkMode}
-                    options={card.echartsOption || defaultBarOption}
+                    options={
+                      card.echartsOption ||
+                      (card.chartKind === 'donut'
+                        ? defaultDonutOption
+                        : card.chartKind === 'line'
+                        ? defaultLineOption
+                        : defaultBarOption)
+                    }
                     height={card.height ? Math.max(160, card.height - 75) : 280}
-                  />
-                )}
-
-                {card.chartKind === 'donut' && (
-                  <EChartsView
-                    isDarkMode={isDarkMode}
-                    options={card.echartsOption || defaultDonutOption}
-                    height={card.height ? Math.max(160, card.height - 75) : 280}
-                  />
-                )}
-
-                {card.chartKind === 'line' && (
-                  <EChartsView
-                    isDarkMode={isDarkMode}
-                    options={card.echartsOption || defaultLineOption}
-                    height={card.height ? Math.max(160, card.height - 75) : 260}
                   />
                 )}
 
@@ -1140,6 +1522,17 @@ export function DashboardCanvas({
                 )}
               </div>
 
+              {/* Dedicated Bottom Badge Footer for bottom_left / bottom_right */}
+              {card.badge && (card.badgePosition === 'bottom_left' || card.badgePosition === 'bottom_right') && (
+                <div
+                  className={`mt-2 pt-2 border-t border-surface-border/60 flex items-center shrink-0 ${
+                    card.badgePosition === 'bottom_left' ? 'justify-start' : 'justify-end'
+                  }`}
+                >
+                  {renderCardBadge(card)}
+                </div>
+              )}
+
               {/* Direct Resize Corner Handle (Pull like an image) */}
               <div
                 onMouseDown={(e) => startResizing(e, card, 'corner')}
@@ -1176,6 +1569,7 @@ export function DashboardCanvas({
           );
         })}
       </div>
+      </div>
 
       {/* Card Expand Fullscreen Modal with Luxury Zoom-In Transition */}
       <CardExpandModal
@@ -1190,6 +1584,16 @@ export function DashboardCanvas({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         dashboardTitle={doc.title}
+        cards={cards}
+      />
+
+      {/* Executive PDF Export Modal */}
+      <ExportPdfModal
+        isOpen={isExportPdfModalOpen}
+        onClose={() => setIsExportPdfModalOpen(false)}
+        dashboardTitle={doc.title}
+        dashboardDescription={doc.description}
+        targetElement={printableReportRef.current}
         cards={cards}
       />
     </div>

@@ -4,4 +4,5 @@ packages:
   - 'packages/*'
   - 'plugins/*'
 allowBuilds:
+  core-js: set this to true or false
   esbuild: true

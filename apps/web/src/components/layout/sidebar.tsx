@@ -48,7 +48,10 @@ export function Sidebar({
   ];
 
   return (
-    <aside className="w-64 border-r border-surface-border bg-surface flex flex-col h-screen select-none shrink-0 transition-colors">
+    <aside
+      className="w-64 border-r border-surface-border bg-surface flex flex-col h-screen select-none shrink-0 transition-colors no-print"
+      data-html2canvas-ignore="true"
+    >
       {/* Brand & Workspace */}
       <div className="p-4 border-b border-surface-border flex items-center justify-between">
         <div className="flex items-center gap-2.5">

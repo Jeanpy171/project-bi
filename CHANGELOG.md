@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2026-10-22
+
+### Added
+
+#### Executive PDF Export System
+- **Interactive A4 Live Preview Modal (`ExportPdfModal`)**: Dedicated export interface with real-time sheet preview, accurate A4 aspect ratio rendering, and clean print support.
+- **Page Estimation & Output Control**: Real-time page count calculation (`1 Hoja A4` vs `2 Hojas A4`) with support for two distribution modes:
+  - *Ajustar a 1 Hoja*: Proportional fit-to-page scaling without vertical cuts.
+  - *Paginado por Secciones*: Two-page clean breakdown between executive KPIs and detailed data tables.
+- **Three-Way High-Contrast Themes**:
+  - *Blanco Puro*: Crisp `#ffffff` canvas with slate borders for economical toner/ink printing.
+  - *Gris Ejecutivo*: High-contrast `#f1f5f9` slate background with elevated white cards and subtle drop shadows.
+  - *Pizarra Dark*: Sleek `#0f172a` executive dark presentation mode.
+
+#### Visual Builder Studio (3-Column Layout)
+- **Integrated Workspace (`VisualBuilderView`)**: Migrated chart builder from a restrictive modal into an integrated 3-column canvas (query/metric controls left, live chart preview center, visualization catalog drawer right).
+- **Collapsible Visualization Catalog Drawer (`ChartCatalogDrawer`)**: Categorized visual palette with instant 1-click preview and non-blocking selection.
+- **Expanded Chart Contracts (`@bi/contracts`)**: Formalized contracts for Radial Gauge (`gauge`), Conversion Funnel (`funnel`), Gradient Area (`area`), and Ranking Bar (`bar_horizontal`).
+
+### Changed
+
+#### Light Mode Visual Depth & Contrast (Stripe & Linear Aesthetics)
+- **Executive Desk Canvas**: Updated light-mode background token to a soft slate tint (`bg-slate-100/70` / `#f1f5f9`), eliminating stark white-on-white monotony.
+- **Physical Card Shadows (`.card-executive`)**: Implemented multi-layered physical drop shadows (`0 12px 24px -4px rgba(15,23,42,0.08)`) and `#cbd5e1` borders.
+- **Volumetric Chart Curves & Shadows (`chart-theme.ts`)**:
+  - Added colored drop shadows (`shadowBlur: 12`, `shadowOffsetY: 6`) to line and area curves.
+  - Implemented 3-stop rich gradient area fills (`0.42` → `0.20` → `0.02`).
+  - Switched chart gridlines to subtle dashed styling (`type: 'dashed'`).
+  - Added volumetric gradients and ambient shadows to bar and horizontal bar series.
+  - Enhanced donut charts with 3D segment borders, `padAngle: 4`, and pillowy depth.
+- **KPI Card Identity**: Added 3.5px accent-colored top border tabs and bold typography to KPI cards.
+
+### Fixed
+- **Expanded Chart Blank Modal**: Resolved issue in `CardExpandModal` where maximizing cards caused ECharts to receive empty options by implementing fallback resolution for all chart kinds.
+- **PDF Title Duplication & Margin Sizing**: Excluded in-app top action bar from PDF capture to prevent title repetition and calibrated capture container to A4 proportions (`1120px` landscape / `800px` portrait), preventing microscopic text.
+- **Card Title Ascender Clipping**: Added safe padding to section and card header typography to eliminate cut-off letter glyphs.
+
+---
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

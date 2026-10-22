@@ -1,8 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { GridCardItem } from './dashboard-canvas';
+import { useEffect, useMemo, useState } from 'react';
+import { type GridCardItem, renderCardBadge } from './dashboard-canvas';
 import { EChartsView } from '../charts/echarts-view';
+import {
+  buildModernAreaOption,
+  buildModernBarOption,
+  buildModernDonutOption,
+  buildModernFunnelOption,
+  buildModernGaugeOption,
+  buildModernLineOption,
+} from '../../lib/chart-theme';
 import {
   Check,
   Copy,
@@ -69,6 +77,82 @@ export function CardExpandModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
+  const resolvedChartOption = useMemo(() => {
+    if (!activeCard) return {};
+    if (activeCard.echartsOption && Object.keys(activeCard.echartsOption).length > 0) {
+      return activeCard.echartsOption;
+    }
+
+    switch (activeCard.chartKind) {
+      case 'donut':
+        return buildModernDonutOption(
+          [
+            { name: 'Ecuador', value: 1048 },
+            { name: 'Argentina', value: 735 },
+            { name: 'Colombia', value: 580 },
+            { name: 'Chile', value: 484 },
+          ],
+          activeCard.title || 'Distribución',
+          isDarkMode,
+          activeCard.accentColor,
+        );
+
+      case 'line':
+        return buildModernLineOption(
+          ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'],
+          [1200, 2400, 3100, 4800],
+          activeCard.title || 'Ingresos',
+          isDarkMode,
+          activeCard.accentColor,
+        );
+
+      case 'area':
+        return buildModernAreaOption(
+          ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'],
+          [1200, 2400, 3100, 4800],
+          activeCard.title || 'Tendencia',
+          isDarkMode,
+          activeCard.accentColor,
+        );
+
+      case 'gauge':
+        return buildModernGaugeOption(
+          activeCard.summaryValue
+            ? parseFloat(activeCard.summaryValue.replace(/[^0-9.]/g, '')) || 78
+            : 78,
+          activeCard.goalValue || 100,
+          activeCard.title || 'Cumplimiento',
+          isDarkMode,
+          activeCard.accentColor || '#2563EB',
+        );
+
+      case 'funnel':
+        return buildModernFunnelOption(
+          [
+            { name: 'Visitas', value: 12500 },
+            { name: 'Leads', value: 4200 },
+            { name: 'Oportunidades', value: 1850 },
+            { name: 'Ventas', value: 680 },
+          ],
+          activeCard.title || 'Conversión',
+          isDarkMode,
+          activeCard.accentColor,
+        );
+
+      case 'bar_grouped':
+      case 'bar_horizontal':
+      default:
+        return buildModernBarOption(
+          ['Tecnología', 'Oficina', 'Servicios', 'Consultoría'],
+          [4250, 1820, 2950, 1400],
+          activeCard.title || 'Ventas 2026',
+          isDarkMode,
+          activeCard.accentColor,
+          activeCard.colorMode || 'gradient',
+        );
+    }
+  }, [activeCard, isDarkMode]);
+
   if (!isMounted || !activeCard) return null;
 
   const handleCopyJson = () => {
@@ -128,14 +212,15 @@ export function CardExpandModal({
                 <h2 className="text-xl font-bold text-foreground tracking-tight truncate">
                   {activeCard.title}
                 </h2>
-                {activeCard.badge && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-surface-subtle text-foreground border border-surface-border shrink-0">
-                    {activeCard.badge}
-                  </span>
-                )}
+                {renderCardBadge(activeCard)}
               </div>
               {activeCard.subtitle && (
-                <p className="text-xs text-muted mt-0.5 truncate">{activeCard.subtitle}</p>
+                <p
+                  style={activeCard.subtitleFontSize ? { fontSize: `${activeCard.subtitleFontSize}px` } : undefined}
+                  className="text-xs text-muted mt-0.5 truncate"
+                >
+                  {activeCard.subtitle}
+                </p>
               )}
             </div>
           </div>
@@ -197,31 +282,13 @@ export function CardExpandModal({
             </div>
           )}
 
-          {activeCard.chartKind === 'bar_grouped' && (
+          {activeCard.chartKind !== 'kpi' &&
+            activeCard.chartKind !== 'plan_cuentas' &&
+            activeCard.chartKind !== 'section_header' && (
             <div className="w-full">
               <EChartsView
                 isDarkMode={isDarkMode}
-                options={activeCard.echartsOption || {}}
-                height={520}
-              />
-            </div>
-          )}
-
-          {activeCard.chartKind === 'donut' && (
-            <div className="w-full">
-              <EChartsView
-                isDarkMode={isDarkMode}
-                options={activeCard.echartsOption || {}}
-                height={520}
-              />
-            </div>
-          )}
-
-          {activeCard.chartKind === 'line' && (
-            <div className="w-full">
-              <EChartsView
-                isDarkMode={isDarkMode}
-                options={activeCard.echartsOption || {}}
+                options={resolvedChartOption}
                 height={520}
               />
             </div>
