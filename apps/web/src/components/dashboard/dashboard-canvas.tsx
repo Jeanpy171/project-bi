@@ -31,6 +31,7 @@ import {
   Maximize2,
   Plus,
   RefreshCw,
+  Sliders,
   Share2,
   ShoppingBag,
   Sparkles,
@@ -75,7 +76,7 @@ interface DashboardCanvasProps {
   readonly isDarkMode: boolean;
 }
 
-const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v6';
+const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v7';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -91,19 +92,19 @@ interface ContentLimits {
 const getContentLimits = (kind: GridCardItem['chartKind']): ContentLimits => {
   switch (kind) {
     case 'kpi':
-      return { minWidth: 3, minHeight: 140, maxWidth: 6, maxHeight: 260 };
+      return { minWidth: 3, minHeight: 140, maxWidth: 6, maxHeight: 280 };
     case 'donut':
-      return { minWidth: 3, minHeight: 240, maxWidth: 12, maxHeight: 650 };
+      return { minWidth: 3, minHeight: 220, maxWidth: 12, maxHeight: 650 };
     case 'bar_grouped':
       return { minWidth: 4, minHeight: 220, maxWidth: 12, maxHeight: 650 };
     case 'line':
       return { minWidth: 4, minHeight: 220, maxWidth: 12, maxHeight: 650 };
     case 'plan_cuentas':
-      return { minWidth: 5, minHeight: 240, maxWidth: 12, maxHeight: 650 };
+      return { minWidth: 5, minHeight: 220, maxWidth: 12, maxHeight: 650 };
     case 'section_header':
-      return { minWidth: 12, minHeight: 60, maxWidth: 12, maxHeight: 120 };
+      return { minWidth: 12, minHeight: 50, maxWidth: 12, maxHeight: 120 };
     default:
-      return { minWidth: 3, minHeight: 180, maxWidth: 12, maxHeight: 650 };
+      return { minWidth: 3, minHeight: 160, maxWidth: 12, maxHeight: 650 };
   }
 };
 
@@ -119,11 +120,13 @@ export function DashboardCanvas({
 
   // Drag-and-drop state
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
   const lastSwapRef = useRef<{ a: string; b: string; time: number } | null>(null);
 
   const [expandedCard, setExpandedCard] = useState<GridCardItem | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [openWidthPickerCardId, setOpenWidthPickerCardId] = useState<string | null>(null);
 
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const cardDomRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -199,7 +202,7 @@ export function DashboardCanvas({
         summaryValue: '$12,490.00',
         trendText: '+18.4% vs mes anterior',
         width: 3,
-        height: 160,
+        height: 180,
         badge: 'Meta Superada',
         kpiIcon: 'dollar',
       },
@@ -210,7 +213,7 @@ export function DashboardCanvas({
         summaryValue: '148',
         trendText: '+9.2% de conversión',
         width: 3,
-        height: 160,
+        height: 180,
         badge: 'Operativo',
         kpiIcon: 'orders',
       },
@@ -221,7 +224,7 @@ export function DashboardCanvas({
         summaryValue: '$84.39',
         trendText: 'Promedio por cliente activo',
         width: 3,
-        height: 160,
+        height: 180,
         kpiIcon: 'ticket',
       },
       {
@@ -231,7 +234,7 @@ export function DashboardCanvas({
         summaryValue: '$145,000.00',
         trendText: 'Cuenta 111 (Disponible)',
         width: 3,
-        height: 160,
+        height: 180,
         badge: 'Métrica Clave',
         kpiIcon: 'wallet',
       },
@@ -248,7 +251,7 @@ export function DashboardCanvas({
         subtitle: 'Calculado desde retail_demo.products & order_items',
         chartKind: 'bar_grouped',
         width: 8,
-        height: 340,
+        height: 350,
       },
       {
         id: 'chart-distribucion-geo',
@@ -256,7 +259,7 @@ export function DashboardCanvas({
         subtitle: 'País de destino de envíos',
         chartKind: 'donut',
         width: 4,
-        height: 340,
+        height: 350,
       },
       {
         id: 'table-plan-cuentas',
@@ -264,7 +267,7 @@ export function DashboardCanvas({
         subtitle: 'Estructura de balance con niveles 1 > 11 > 111',
         chartKind: 'plan_cuentas',
         width: 6,
-        height: 340,
+        height: 350,
         badge: 'Pixel-Perfect',
       },
       {
@@ -273,7 +276,7 @@ export function DashboardCanvas({
         subtitle: 'Evolución en tiempo real',
         chartKind: 'line',
         width: 6,
-        height: 340,
+        height: 350,
       },
     ],
     [],
@@ -332,11 +335,11 @@ export function DashboardCanvas({
       const dy = prev.top - current.top;
 
       if (dx !== 0 || dy !== 0) {
-        el.style.transform = `translate(${dx}px, ${dy}px)`;
+        el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
         el.style.transition = 'none';
 
         requestAnimationFrame(() => {
-          el.style.transition = 'transform 350ms cubic-bezier(0.16, 1, 0.3, 1)';
+          el.style.transition = 'transform 380ms cubic-bezier(0.16, 1, 0.3, 1)';
           el.style.transform = '';
         });
       }
@@ -374,7 +377,7 @@ export function DashboardCanvas({
             summaryValue: dc.summaryValue,
             echartsOption: dc.echartsOption,
             width: dc.chartKind === 'kpi' ? 4 : 6,
-            height: dc.chartKind === 'kpi' ? 160 : 340,
+            height: dc.chartKind === 'kpi' ? 180 : 350,
             badge: 'Personalizada',
           });
         }
@@ -400,6 +403,7 @@ export function DashboardCanvas({
   const updateCardWidth = (id: string, width: CardWidth) => {
     snapshotPositions();
     setCards((prev) => prev.map((c) => (c.id === id ? { ...c, width } : c)));
+    setOpenWidthPickerCardId(null);
   };
 
   const updateCardField = (
@@ -565,6 +569,8 @@ export function DashboardCanvas({
 
     if (!draggedCardId || draggedCardId === targetId) return;
 
+    setDragOverCardId(targetId);
+
     const now = Date.now();
     // Anti-oscillation lock: prevent immediate reverse swap between the same two cards
     if (
@@ -593,6 +599,7 @@ export function DashboardCanvas({
 
   const handleDragEnd = () => {
     setDraggedCardId(null);
+    setDragOverCardId(null);
     lastSwapRef.current = null;
   };
 
@@ -652,7 +659,7 @@ export function DashboardCanvas({
 
           <button
             onClick={handleRefresh}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>Refrescar</span>
@@ -660,7 +667,7 @@ export function DashboardCanvas({
 
           <button
             onClick={handleAddSectionHeader}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             title="Añadir divisor de sección"
           >
             <Heading className="h-3.5 w-3.5 text-primary" />
@@ -672,8 +679,9 @@ export function DashboardCanvas({
             onClick={() => {
               setIsEditMode((prev) => !prev);
               setEditingCardId(null);
+              setOpenWidthPickerCardId(null);
             }}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
               isEditMode
                 ? 'border-primary bg-primary text-white shadow-primary/20'
                 : 'border-surface-border bg-surface text-foreground hover:bg-surface-subtle'
@@ -685,7 +693,7 @@ export function DashboardCanvas({
 
           <button
             onClick={onNavigateToBuilder}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary-hover transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary-hover transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
             <span>+ Añadir Pregunta</span>
@@ -693,7 +701,7 @@ export function DashboardCanvas({
 
           <button
             onClick={() => setIsShareModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface border border-surface-border text-foreground text-xs font-semibold hover:bg-surface-subtle transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-surface border border-surface-border text-foreground text-xs font-semibold hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             title="Compartir o exportar tablero"
           >
             <Share2 className="h-3.5 w-3.5 text-muted" />
@@ -712,6 +720,8 @@ export function DashboardCanvas({
           const isBeingDragged = draggedCardId === card.id;
           const isBeingResized = resizingCard?.id === card.id;
           const isEditingThisCard = editingCardId === card.id;
+          const isWidthPickerOpen = openWidthPickerCardId === card.id;
+          const isDropTarget = dragOverCardId === card.id && draggedCardId !== card.id;
           const limits = getContentLimits(card.chartKind);
 
           // =====================================================
@@ -730,7 +740,7 @@ export function DashboardCanvas({
                 onDragOver={(e) => handleDragOver(e, card.id)}
                 onDragEnd={handleDragEnd}
                 className={`${colSpanClass} min-w-0 rounded-2xl bg-surface border border-slate-300 dark:border-slate-700/80 px-5 py-3.5 shadow-sm transition-all duration-300 relative group ${
-                  isBeingDragged ? 'opacity-40 scale-[0.99] border-dashed border-primary' : ''
+                  isBeingDragged ? 'opacity-30 scale-[0.99] border-dashed border-primary bg-primary/5' : ''
                 }`}
                 style={{
                   borderLeftWidth: '5px',
@@ -787,7 +797,7 @@ export function DashboardCanvas({
                       <button
                         onClick={() => moveCard(idx, 'up')}
                         disabled={idx === 0}
-                        className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
+                        className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30 transition-transform active:scale-90"
                         title="Mover arriba"
                       >
                         <ArrowUp className="h-3.5 w-3.5" />
@@ -795,14 +805,14 @@ export function DashboardCanvas({
                       <button
                         onClick={() => moveCard(idx, 'down')}
                         disabled={idx === cards.length - 1}
-                        className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
+                        className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30 transition-transform active:scale-90"
                         title="Mover abajo"
                       >
                         <ArrowDown className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => deleteCardById(card.id)}
-                        className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 ml-0.5"
+                        className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 ml-0.5 transition-colors"
                         title="Eliminar sección"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -815,7 +825,7 @@ export function DashboardCanvas({
           }
 
           // =====================================================
-          // 2. EXECUTIVE BUSINESS INTELLIGENCE CARDS (Clean Framing Lines)
+          // 2. EXECUTIVE BUSINESS INTELLIGENCE CARDS (Zero Button Overlap)
           // =====================================================
           return (
             <div
@@ -828,11 +838,17 @@ export function DashboardCanvas({
               onDragStart={(e) => handleDragStart(card.id, e)}
               onDragOver={(e) => handleDragOver(e, card.id)}
               onDragEnd={handleDragEnd}
-              className={`${colSpanClass} min-w-0 rounded-2xl bg-surface p-5 flex flex-col justify-between relative group border border-slate-300/80 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-primary/50 transition-all duration-300 ${
+              className={`${colSpanClass} min-w-0 rounded-3xl bg-surface/95 backdrop-blur-xl p-5 flex flex-col justify-between relative group border border-slate-300 dark:border-slate-700/80 shadow-[0_2px_12px_rgba(0,0,0,0.03),0_1px_2px_rgba(0,0,0,0.02)] ${
+                !draggedCardId && !resizingCard
+                  ? 'hover:shadow-xl hover:border-primary/50 hover:-translate-y-0.5 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'
+                  : 'transition-[border-color,box-shadow,opacity,background-color] duration-200'
+              } ${
                 isBeingDragged
-                  ? 'opacity-30 scale-[0.98] border-dashed border-primary shadow-inner bg-primary/5'
+                  ? 'opacity-35 scale-[0.97] border-2 border-dashed border-primary shadow-2xl bg-primary/5 cursor-grabbing z-30'
                   : isBeingResized
-                  ? 'ring-2 ring-primary ring-offset-2 shadow-2xl z-20 border-primary'
+                  ? 'ring-2 ring-primary ring-offset-2 shadow-2xl z-20 border-primary scale-[1.01]'
+                  : isDropTarget
+                  ? 'ring-2 ring-primary/60 ring-offset-2 scale-[1.01] shadow-xl border-primary'
                   : ''
               }`}
               style={{
@@ -843,7 +859,7 @@ export function DashboardCanvas({
               {/* Dimension Tooltip when actively resizing */}
               {isBeingResized && (
                 <div
-                  className={`absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full text-xs font-bold shadow-xl flex items-center gap-1.5 pointer-events-none animate-in fade-in ${
+                  className={`absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center gap-1.5 pointer-events-none animate-in fade-in duration-200 ${
                     resizingCard?.hitLimit
                       ? 'bg-amber-500 text-white animate-pulse'
                       : 'bg-foreground text-background'
@@ -858,15 +874,15 @@ export function DashboardCanvas({
                 </div>
               )}
 
-              {/* Card Header (Structured with crisp division line) */}
-              <div className="mb-2.5 pb-2 border-b border-surface-border/70 shrink-0">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
+              {/* Card Header (Clean & Uncluttered: ZERO Button Overlap) */}
+              <div className="mb-2 pb-2.5 border-b border-surface-border/70 shrink-0">
+                <div className="flex items-center justify-between gap-1.5 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     {/* Drag Handle in Edit Mode */}
                     {isEditMode && (
                       <div
-                        className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 transition-transform active:scale-95"
-                        title="Arrastrar para reordenar de forma fluida"
+                        className="cursor-grab active:cursor-grabbing p-1 rounded-md hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 transition-transform active:scale-95"
+                        title="Arrastrar para reordenar"
                       >
                         <GripVertical className="h-4 w-4" />
                       </div>
@@ -874,61 +890,49 @@ export function DashboardCanvas({
 
                     <div className="flex-1 min-w-0">
                       {isEditMode && isEditingThisCard ? (
-                        <div className="space-y-1 py-1">
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              value={card.title}
-                              onChange={(e) =>
-                                updateCardField(card.id, { title: e.target.value })
-                              }
-                              placeholder="Título de la tarjeta..."
-                              className="flex-1 px-2 py-0.5 rounded border border-surface-border bg-surface text-sm font-bold text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
-                            />
-                            <button
-                              onClick={() => setEditingCardId(null)}
-                              className="p-1 rounded text-muted hover:text-foreground"
-                              title="Listo"
-                            >
-                              <Check className="h-3.5 w-3.5 text-success" />
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              value={card.subtitle || ''}
-                              onChange={(e) =>
-                                updateCardField(card.id, { subtitle: e.target.value })
-                              }
-                              placeholder="Subtítulo..."
-                              className="flex-1 px-2 py-0.5 rounded border border-surface-border bg-surface text-[11px] text-muted focus:ring-1 focus:ring-primary focus:outline-none"
-                            />
-                            <input
-                              type="text"
-                              value={card.badge || ''}
-                              onChange={(e) =>
-                                updateCardField(card.id, { badge: e.target.value })
-                              }
-                              placeholder="Badge..."
-                              className="w-20 px-2 py-0.5 rounded border border-surface-border bg-surface text-[10px] text-muted focus:ring-1 focus:ring-primary focus:outline-none"
-                            />
-                          </div>
+                        <div className="flex items-center gap-1 w-full min-w-0">
+                          <input
+                            type="text"
+                            value={card.title}
+                            onChange={(e) =>
+                              updateCardField(card.id, { title: e.target.value })
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') setEditingCardId(null);
+                            }}
+                            autoFocus
+                            placeholder="Título..."
+                            className="w-full min-w-0 px-2 py-0.5 rounded border border-surface-border bg-surface text-xs sm:text-sm font-bold text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                          />
+                          <button
+                            onClick={() => setEditingCardId(null)}
+                            className="p-1 rounded text-muted hover:text-foreground shrink-0 transition-transform active:scale-90"
+                            title="Guardar"
+                          >
+                            <Check className="h-3.5 w-3.5 text-success" />
+                          </button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-bold text-foreground tracking-tight truncate">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h3
+                            onClick={() => isEditMode && setEditingCardId(card.id)}
+                            className={`text-xs sm:text-sm font-bold text-foreground tracking-tight truncate ${
+                              isEditMode ? 'cursor-pointer hover:text-primary transition-colors' : ''
+                            }`}
+                            title={card.title}
+                          >
                             {card.title}
                           </h3>
                           {card.badge && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-surface-subtle text-foreground border border-surface-border shrink-0">
+                            <span className="hidden sm:inline-block px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase tracking-wider bg-surface-subtle text-foreground border border-surface-border shrink-0">
                               {card.badge}
                             </span>
                           )}
                           {isEditMode && (
                             <button
                               onClick={() => setEditingCardId(card.id)}
-                              className="p-1 rounded text-muted hover:text-foreground opacity-60 hover:opacity-100 transition-opacity"
-                              title="Editar título y etiquetas"
+                              className="p-0.5 rounded text-muted hover:text-foreground opacity-60 hover:opacity-100 transition-opacity shrink-0"
+                              title="Editar título"
                             >
                               <Edit2 className="h-3 w-3" />
                             </button>
@@ -936,12 +940,12 @@ export function DashboardCanvas({
                         </div>
                       )}
                       {!isEditingThisCard && card.subtitle && (
-                        <p className="text-[11px] text-muted mt-0.5 truncate">{card.subtitle}</p>
+                        <p className="text-[10px] sm:text-[11px] text-muted truncate">{card.subtitle}</p>
                       )}
                     </div>
                   </div>
 
-                  {/* Actions Header Toolbar */}
+                  {/* Actions Header Toolbar: Compact & Non-Overlapping */}
                   <div className="flex items-center gap-1 shrink-0">
                     {/* Micro-Icon for KPI cards */}
                     {card.chartKind === 'kpi' && !isEditMode && (
@@ -954,55 +958,76 @@ export function DashboardCanvas({
                       </div>
                     )}
 
-                    {/* Quick Width Buttons in Edit Mode */}
+                    {/* Width Preset Popover Dropdown (Clean, NOT inlined into the header) */}
                     {isEditMode && (
-                      <div className="hidden sm:flex items-center gap-0.5 mr-1 bg-surface-subtle px-1 py-0.5 rounded-lg border border-surface-border text-[10px]">
-                        {[
-                          { w: 3 as CardWidth, label: '1/4' },
-                          { w: 4 as CardWidth, label: '1/3' },
-                          { w: 6 as CardWidth, label: '1/2' },
-                          { w: 8 as CardWidth, label: '2/3' },
-                          { w: 12 as CardWidth, label: 'Full' },
-                        ].map((btn) => (
-                          <button
-                            key={btn.w}
-                            disabled={btn.w < limits.minWidth}
-                            onClick={() => updateCardWidth(card.id, btn.w)}
-                            className={`px-1.5 py-0.5 rounded font-bold transition-all ${
-                              card.width === btn.w
-                                ? 'bg-primary text-white shadow-sm'
-                                : 'text-muted hover:text-foreground disabled:opacity-20'
-                            }`}
-                            title={`Ajustar a ancho ${btn.label}`}
-                          >
-                            {btn.label}
-                          </button>
-                        ))}
+                      <div className="relative">
+                        <button
+                          onClick={() =>
+                            setOpenWidthPickerCardId(isWidthPickerOpen ? null : card.id)
+                          }
+                          className="p-1 sm:p-1.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle text-muted hover:text-foreground text-[10px] font-bold flex items-center gap-1 shadow-sm transition-all"
+                          title="Ajustar columnas"
+                        >
+                          <Sliders className="h-3 w-3" />
+                          <span>{card.width}/12</span>
+                        </button>
+
+                        {isWidthPickerOpen && (
+                          <div className="absolute right-0 top-7 z-30 p-2 rounded-xl bg-surface border border-surface-border shadow-2xl flex flex-col gap-1 w-28 animate-in fade-in duration-200">
+                            <span className="text-[10px] font-bold text-muted px-1.5 py-0.5 uppercase tracking-wider">
+                              Ancho:
+                            </span>
+                            {[
+                              { w: 3 as CardWidth, label: '1/4 (3 col)' },
+                              { w: 4 as CardWidth, label: '1/3 (4 col)' },
+                              { w: 6 as CardWidth, label: '1/2 (6 col)' },
+                              { w: 8 as CardWidth, label: '2/3 (8 col)' },
+                              { w: 12 as CardWidth, label: 'Full (12 col)' },
+                            ].map((btn) => (
+                              <button
+                                key={btn.w}
+                                disabled={btn.w < limits.minWidth}
+                                onClick={() => updateCardWidth(card.id, btn.w)}
+                                className={`px-2 py-1 rounded text-left text-xs font-semibold transition-all ${
+                                  card.width === btn.w
+                                    ? 'bg-primary text-white font-bold'
+                                    : 'hover:bg-surface-subtle text-foreground disabled:opacity-30'
+                                }`}
+                              >
+                                {btn.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {/* Up / Down / Delete in Edit Mode */}
+                    {/* Delete / Move Controls in Edit Mode */}
                     {isEditMode && (
                       <div className="flex items-center bg-surface-subtle p-0.5 rounded-lg border border-surface-border">
-                        <button
-                          onClick={() => moveCard(idx, 'up')}
-                          disabled={idx === 0}
-                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
-                          title="Mover arriba"
-                        >
-                          <ArrowUp className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={() => moveCard(idx, 'down')}
-                          disabled={idx === cards.length - 1}
-                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
-                          title="Mover abajo"
-                        >
-                          <ArrowDown className="h-3 w-3" />
-                        </button>
+                        {card.width >= 6 && (
+                          <>
+                            <button
+                              onClick={() => moveCard(idx, 'up')}
+                              disabled={idx === 0}
+                              className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30 transition-transform active:scale-90"
+                              title="Mover arriba"
+                            >
+                              <ArrowUp className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={() => moveCard(idx, 'down')}
+                              disabled={idx === cards.length - 1}
+                              className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30 transition-transform active:scale-90"
+                              title="Mover abajo"
+                            >
+                              <ArrowDown className="h-3 w-3" />
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => deleteCardById(card.id)}
-                          className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 ml-0.5"
+                          className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
                           title="Eliminar tarjeta"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -1010,10 +1035,10 @@ export function DashboardCanvas({
                       </div>
                     )}
 
-                    {/* Expand Button */}
+                    {/* Expand Button with Smooth Elevation and Ripple */}
                     <button
                       onClick={() => setExpandedCard(card)}
-                      className="text-muted hover:text-foreground p-1 rounded-lg hover:bg-surface-subtle transition-all"
+                      className="text-muted hover:text-foreground p-1 sm:p-1.5 rounded-xl hover:bg-surface-subtle hover:text-primary transition-all duration-200 hover:scale-110 active:scale-90"
                       title="Expandir a pantalla completa"
                     >
                       <Maximize2 className="h-3.5 w-3.5" />
@@ -1022,17 +1047,17 @@ export function DashboardCanvas({
                 </div>
               </div>
 
-              {/* Card Body (100% Focused on Content & Visuals) */}
-              <div className="flex-1 flex flex-col justify-center min-h-0 overflow-hidden">
+              {/* Card Body: 100% Focused, Zero Vertical Clipping */}
+              <div className="flex-1 flex flex-col justify-center min-h-0 py-1.5">
                 {card.chartKind === 'kpi' && (
-                  <div className="py-2 space-y-2">
-                    <div className="text-3xl font-extrabold text-foreground tracking-tight font-mono">
+                  <div className="space-y-1.5 flex-1 flex flex-col justify-center">
+                    <div className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tight font-mono leading-tight">
                       {card.summaryValue}
                     </div>
                     {card.trendText && (
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                        <TrendingUp className="h-3.5 w-3.5" />
-                        <span>{card.trendText}</span>
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 w-fit">
+                        <TrendingUp className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{card.trendText}</span>
                       </div>
                     )}
                   </div>
@@ -1152,7 +1177,7 @@ export function DashboardCanvas({
         })}
       </div>
 
-      {/* Card Expand Fullscreen Modal */}
+      {/* Card Expand Fullscreen Modal with Luxury Zoom-In Transition */}
       <CardExpandModal
         card={expandedCard}
         isOpen={Boolean(expandedCard)}

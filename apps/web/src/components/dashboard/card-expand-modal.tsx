@@ -26,30 +26,62 @@ export function CardExpandModal({
   isDarkMode,
 }: CardExpandModalProps) {
   const [copied, setCopied] = useState(false);
+  const [activeCard, setActiveCard] = useState<GridCardItem | null>(card);
+  const [isMounted, setIsMounted] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (card) {
+      setActiveCard(card);
+    }
+  }, [card]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsMounted(true);
+      const timer = setTimeout(() => {
+        setIsVisible(true);
+      }, 20);
+      return () => clearTimeout(timer);
+    } else {
+      setIsVisible(false);
+      const timer = setTimeout(() => {
+        setIsMounted(false);
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  const handleClose = () => {
+    setIsVisible(false);
+    setTimeout(() => {
+      onClose();
+    }, 250);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
-  if (!isOpen || !card) return null;
+  if (!isMounted || !activeCard) return null;
 
   const handleCopyJson = () => {
     const jsonStr = JSON.stringify(
       {
-        id: card.id,
-        title: card.title,
-        subtitle: card.subtitle,
-        chartKind: card.chartKind,
-        summaryValue: card.summaryValue,
-        trendText: card.trendText,
-        source: card.sourceName,
-        table: card.tableName,
+        id: activeCard.id,
+        title: activeCard.title,
+        subtitle: activeCard.subtitle,
+        chartKind: activeCard.chartKind,
+        summaryValue: activeCard.summaryValue,
+        trendText: activeCard.trendText,
+        source: activeCard.sourceName,
+        table: activeCard.tableName,
       },
       null,
       2,
@@ -60,13 +92,12 @@ export function CardExpandModal({
   };
 
   const handleDownloadPng = () => {
-    // Find the canvas inside the modal and trigger download
     const canvas = document.querySelector('.card-expand-container canvas') as HTMLCanvasElement | null;
     if (canvas) {
       const url = canvas.toDataURL('image/png');
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${card.title.toLowerCase().replace(/\s+/g, '_')}_bi_export.png`;
+      a.download = `${activeCard.title.toLowerCase().replace(/\s+/g, '_')}_bi_export.png`;
       a.click();
     } else {
       window.print();
@@ -74,51 +105,45 @@ export function CardExpandModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-6xl max-h-[90vh] flex flex-col bg-surface border border-surface-border rounded-3xl shadow-2xl overflow-hidden card-expand-container">
-        {/* Accent Bar if custom color */}
-        {card.customColor && (
-          <div
-            className="h-1.5 w-full shrink-0"
-            style={{ backgroundColor: card.customColor }}
-          />
-        )}
-
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) handleClose();
+      }}
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
+    >
+      <div
+        className={`relative w-full max-w-6xl max-h-[92vh] flex flex-col bg-surface/95 backdrop-blur-2xl border border-surface-border/90 rounded-3xl shadow-[0_25px_80px_-15px_rgba(0,0,0,0.5)] overflow-hidden card-expand-container transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ring-1 ring-white/10 ${
+          isVisible
+            ? 'opacity-100 scale-100 translate-y-0'
+            : 'opacity-0 scale-95 translate-y-4'
+        }`}
+      >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border shrink-0 bg-surface">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border/80 shrink-0 bg-surface/80">
+          <div className="flex items-center gap-3 min-w-0">
             <div>
               <div className="flex items-center gap-2.5">
-                <h2 className="text-xl font-bold text-foreground tracking-tight">
-                  {card.title}
+                <h2 className="text-xl font-bold text-foreground tracking-tight truncate">
+                  {activeCard.title}
                 </h2>
-                {card.badge && (
-                  <span
-                    className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider"
-                    style={
-                      card.customColor
-                        ? {
-                            backgroundColor: `${card.customColor}18`,
-                            color: card.customColor,
-                            border: `1px solid ${card.customColor}40`,
-                          }
-                        : undefined
-                    }
-                  >
-                    {card.badge}
+                {activeCard.badge && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-surface-subtle text-foreground border border-surface-border shrink-0">
+                    {activeCard.badge}
                   </span>
                 )}
               </div>
-              {card.subtitle && (
-                <p className="text-xs text-muted mt-0.5">{card.subtitle}</p>
+              {activeCard.subtitle && (
+                <p className="text-xs text-muted mt-0.5 truncate">{activeCard.subtitle}</p>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={handleCopyJson}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm"
               title="Copiar datos en formato JSON"
             >
               {copied ? (
@@ -136,7 +161,7 @@ export function CardExpandModal({
 
             <button
               onClick={handleDownloadPng}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm"
               title="Descargar imagen PNG de la métrica"
             >
               <Download className="h-3.5 w-3.5 text-muted" />
@@ -144,8 +169,8 @@ export function CardExpandModal({
             </button>
 
             <button
-              onClick={onClose}
-              className="p-2 rounded-xl text-muted hover:text-foreground hover:bg-surface-subtle transition-all ml-1"
+              onClick={handleClose}
+              className="p-2 rounded-xl text-muted hover:text-foreground hover:bg-surface-subtle transition-all duration-200 hover:scale-110 active:scale-90 ml-1 border border-surface-border bg-surface shadow-sm"
               title="Cerrar vista expandida (Esc)"
             >
               <Minimize2 className="h-4 w-4" />
@@ -153,57 +178,57 @@ export function CardExpandModal({
           </div>
         </div>
 
-        {/* Modal Body: Large View */}
+        {/* Modal Body: High Resolution Large View */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {card.chartKind === 'kpi' && (
-            <div className="py-12 flex flex-col items-center justify-center text-center space-y-4 bg-surface-subtle/50 rounded-2xl border border-surface-border">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted">
-                Valor Actual Registrado
+          {activeCard.chartKind === 'kpi' && (
+            <div className="py-16 flex flex-col items-center justify-center text-center space-y-5 bg-surface-subtle/50 rounded-3xl border border-surface-border">
+              <span className="text-xs font-bold uppercase tracking-widest text-muted">
+                Métrica Consolidada en Tiempo Real
               </span>
-              <div className="text-6xl font-black text-foreground tracking-tight font-mono">
-                {card.summaryValue}
+              <div className="text-7xl font-black text-foreground tracking-tight font-mono">
+                {activeCard.summaryValue}
               </div>
-              {card.trendText && (
-                <div className="flex items-center gap-2 text-base text-success font-bold bg-success/10 px-4 py-1.5 rounded-full border border-success/20">
+              {activeCard.trendText && (
+                <div className="flex items-center gap-2 text-base text-success font-bold bg-success/10 px-5 py-2 rounded-full border border-success/20 shadow-sm">
                   <TrendingUp className="h-5 w-5" />
-                  <span>{card.trendText}</span>
+                  <span>{activeCard.trendText}</span>
                 </div>
               )}
             </div>
           )}
 
-          {card.chartKind === 'bar_grouped' && card.echartsOption && (
+          {activeCard.chartKind === 'bar_grouped' && (
             <div className="w-full">
               <EChartsView
                 isDarkMode={isDarkMode}
-                options={card.echartsOption}
+                options={activeCard.echartsOption || {}}
                 height={520}
               />
             </div>
           )}
 
-          {card.chartKind === 'donut' && card.echartsOption && (
+          {activeCard.chartKind === 'donut' && (
             <div className="w-full">
               <EChartsView
                 isDarkMode={isDarkMode}
-                options={card.echartsOption}
+                options={activeCard.echartsOption || {}}
                 height={520}
               />
             </div>
           )}
 
-          {card.chartKind === 'line' && card.echartsOption && (
+          {activeCard.chartKind === 'line' && (
             <div className="w-full">
               <EChartsView
                 isDarkMode={isDarkMode}
-                options={card.echartsOption}
+                options={activeCard.echartsOption || {}}
                 height={520}
               />
             </div>
           )}
 
-          {card.chartKind === 'plan_cuentas' && (
-            <div className="overflow-x-auto rounded-2xl border border-surface-border bg-surface">
+          {activeCard.chartKind === 'plan_cuentas' && (
+            <div className="overflow-x-auto rounded-2xl border border-surface-border bg-surface shadow-sm">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-surface-border text-foreground font-semibold bg-surface-subtle">
                   <tr>
@@ -254,10 +279,10 @@ export function CardExpandModal({
             <div className="flex items-center gap-1.5">
               <FileCode className="h-4 w-4" />
               <span>
-                Identificador: <span className="font-mono text-foreground">{card.id}</span>
+                Identificador: <span className="font-mono text-foreground">{activeCard.id}</span>
               </span>
             </div>
-            <span>Tipo: {card.chartKind}</span>
+            <span>Tipo: {activeCard.chartKind}</span>
           </div>
         </div>
       </div>
