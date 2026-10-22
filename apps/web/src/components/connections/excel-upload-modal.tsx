@@ -47,8 +47,20 @@ export function ExcelUploadModal({ isOpen, onClose, onSourceAdded }: ExcelUpload
     }
   };
 
-  const handleLoadSample = () => {
-    // Generate a realistic in-memory Excel workbook for quick testing
+  const handleLoadSample = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/metricas_bi_ejemplo.xlsx');
+      if (res.ok) {
+        const blob = await res.blob();
+        const file = new File([blob], 'metricas_bi_ejemplo.xlsx', { type: blob.type });
+        await handleFile(file);
+        return;
+      }
+    } catch {
+      // Fallback to in-memory generator
+    }
+
     const sampleRows = [
       { Mes: 'Enero', Region: 'Norte', Vendedor: 'Carlos M.', Ventas: 12500, Gastos: 4100 },
       { Mes: 'Enero', Region: 'Sur', Vendedor: 'Ana G.', Ventas: 9800, Gastos: 3200 },
@@ -56,8 +68,6 @@ export function ExcelUploadModal({ isOpen, onClose, onSourceAdded }: ExcelUpload
       { Mes: 'Febrero', Region: 'Sur', Vendedor: 'Ana G.', Ventas: 11100, Gastos: 3400 },
       { Mes: 'Marzo', Region: 'Centro', Vendedor: 'Lucia R.', Ventas: 18900, Gastos: 5200 },
       { Mes: 'Marzo', Region: 'Norte', Vendedor: 'Carlos M.', Ventas: 16400, Gastos: 4800 },
-      { Mes: 'Abril', Region: 'Centro', Vendedor: 'Lucia R.', Ventas: 21000, Gastos: 5900 },
-      { Mes: 'Abril', Region: 'Sur', Vendedor: 'Ana G.', Ventas: 13500, Gastos: 3900 },
     ];
 
     const ws = XLSX.utils.json_to_sheet(sampleRows);
@@ -145,19 +155,35 @@ export function ExcelUploadModal({ isOpen, onClose, onSourceAdded }: ExcelUpload
             </label>
           </div>
 
-          {/* Quick Demo File Option */}
-          <div className="flex items-center justify-between p-3 rounded-xl border border-surface-border bg-surface-subtle">
-            <div className="flex items-center gap-2">
-              <TableIcon className="h-4 w-4 text-muted" />
-              <span className="text-xs text-foreground font-medium">¿No tienes un Excel a mano?</span>
+          {/* Quick Demo File Option & Template Download */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-surface-border bg-surface-subtle">
+            <div className="flex items-center gap-2.5">
+              <TableIcon className="h-5 w-5 text-primary shrink-0" />
+              <div>
+                <span className="text-xs text-foreground font-semibold block">
+                  Plantilla de Métricas y Ventas 2026
+                </span>
+                <span className="text-[11px] text-muted block">
+                  3 hojas: Ventas_Retail, Evolucion_Financiera, Plan_de_Cuentas
+                </span>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={handleLoadSample}
-              className="text-xs font-semibold text-primary hover:underline"
-            >
-              Cargar archivo demo (Ventas 2026)
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <a
+                href="/metricas_bi_ejemplo.xlsx"
+                download="metricas_bi_ejemplo.xlsx"
+                className="px-2.5 py-1.5 text-xs text-muted hover:text-foreground font-semibold border border-surface-border rounded-lg bg-surface hover:bg-surface-subtle transition-colors shadow-sm"
+              >
+                Descargar .xlsx
+              </a>
+              <button
+                type="button"
+                onClick={handleLoadSample}
+                className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary-hover shadow-sm transition-all"
+              >
+                Cargar en vivo
+              </button>
+            </div>
           </div>
 
           {/* Parsed Result Preview */}
