@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ConnectionConfig, DashboardDocument } from '@bi/contracts';
 import { Sidebar, type AppView } from '../components/layout/sidebar';
 import { DashboardCanvas, type DynamicCard } from '../components/dashboard/dashboard-canvas';
@@ -40,16 +40,17 @@ export default function HomePage() {
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
+  // Synchronize documentElement class whenever isDarkMode state changes
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
   const toggleDarkMode = () => {
-    setIsDarkMode((prev) => {
-      const next = !prev;
-      if (next) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-      return next;
-    });
+    setIsDarkMode((prev) => !prev);
   };
 
   const handleSourceAdded = (newSource: DataSource) => {

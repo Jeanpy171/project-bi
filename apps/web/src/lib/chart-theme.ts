@@ -27,6 +27,7 @@ export const SAAS_PALETTE_DARK = [
 export interface ChartThemeTokens {
   readonly isDark: boolean;
   readonly splitLineColor: string;
+  readonly axisBaseLineColor: string;
   readonly axisLabelColor: string;
   readonly pointerColor: string;
   readonly tooltipBg: string;
@@ -38,9 +39,11 @@ export interface ChartThemeTokens {
 export function getChartThemeTokens(isDark: boolean): ChartThemeTokens {
   return {
     isDark,
-    splitLineColor: isDark ? 'rgba(51, 65, 85, 0.45)' : '#e2e8f0',
-    axisLabelColor: isDark ? '#e2e8f0' : '#334155', // High contrast slate-200 in dark, slate-700 in light
-    pointerColor: isDark ? '#475569' : '#94a3b8',
+    // Crisp, elegant dashed grid lines visible in both themes
+    splitLineColor: isDark ? 'rgba(71, 85, 105, 0.45)' : 'rgba(148, 163, 184, 0.45)',
+    axisBaseLineColor: isDark ? 'rgba(71, 85, 105, 0.55)' : '#cbd5e1',
+    axisLabelColor: isDark ? '#e2e8f0' : '#334155', // Slate-200 in dark, Slate-700 in light
+    pointerColor: isDark ? '#64748b' : '#94a3b8',
     tooltipBg: isDark ? '#0f172a' : '#ffffff',
     tooltipBorder: isDark ? '#334155' : '#cbd5e1',
     tooltipText: isDark ? '#f8fafc' : '#0f172a',
@@ -82,7 +85,7 @@ export function getModernTooltip(
 }
 
 /**
- * Modern Bar Chart Options with subtle dashed grid, rounded bars, and zero heavy black axis lines.
+ * Modern Bar Chart Options with subtle dashed grid, grounded baseline, and rounded bars.
  */
 export function buildModernBarOption(
   categories: readonly string[],
@@ -105,7 +108,13 @@ export function buildModernBarOption(
     xAxis: {
       type: 'category',
       data: categories as string[],
-      axisLine: { show: false },
+      axisLine: {
+        show: true,
+        lineStyle: {
+          color: tokens.axisBaseLineColor,
+          width: 1,
+        },
+      },
       axisTick: { show: false },
       axisLabel: {
         color: tokens.axisLabelColor,
@@ -123,7 +132,7 @@ export function buildModernBarOption(
         show: true,
         lineStyle: {
           color: tokens.splitLineColor,
-          type: 'dashed',
+          type: 'dashed' as const,
           width: 1,
         },
       },
@@ -158,7 +167,7 @@ export function buildModernBarOption(
 }
 
 /**
- * Modern Line Chart Options with smooth spline and soft gradient area.
+ * Modern Line Chart Options with smooth spline, grounded baseline, and soft gradient area.
  */
 export function buildModernLineOption(
   categories: readonly string[],
@@ -182,7 +191,13 @@ export function buildModernLineOption(
     xAxis: {
       type: 'category',
       data: categories as string[],
-      axisLine: { show: false },
+      axisLine: {
+        show: true,
+        lineStyle: {
+          color: tokens.axisBaseLineColor,
+          width: 1,
+        },
+      },
       axisTick: { show: false },
       axisLabel: {
         color: tokens.axisLabelColor,
@@ -200,7 +215,7 @@ export function buildModernLineOption(
         show: true,
         lineStyle: {
           color: tokens.splitLineColor,
-          type: 'dashed',
+          type: 'dashed' as const,
           width: 1,
         },
       },
