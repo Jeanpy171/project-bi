@@ -56,7 +56,6 @@ export interface GridCardItem {
   badge?: string;
   customColor?: string;
   kpiIcon?: 'dollar' | 'orders' | 'ticket' | 'wallet';
-  isPlaceholder?: boolean;
 }
 
 export interface DynamicCard {
@@ -76,10 +75,37 @@ interface DashboardCanvasProps {
   readonly isDarkMode: boolean;
 }
 
-const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v5';
+const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v6';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+// Content-Aware Limits: Prevent cards from shrinking below visual quality thresholds
+interface ContentLimits {
+  minWidth: CardWidth;
+  minHeight: number;
+  maxWidth: CardWidth;
+  maxHeight: number;
+}
+
+const getContentLimits = (kind: GridCardItem['chartKind']): ContentLimits => {
+  switch (kind) {
+    case 'kpi':
+      return { minWidth: 3, minHeight: 140, maxWidth: 6, maxHeight: 260 };
+    case 'donut':
+      return { minWidth: 3, minHeight: 240, maxWidth: 12, maxHeight: 650 };
+    case 'bar_grouped':
+      return { minWidth: 4, minHeight: 220, maxWidth: 12, maxHeight: 650 };
+    case 'line':
+      return { minWidth: 4, minHeight: 220, maxWidth: 12, maxHeight: 650 };
+    case 'plan_cuentas':
+      return { minWidth: 5, minHeight: 240, maxWidth: 12, maxHeight: 650 };
+    case 'section_header':
+      return { minWidth: 12, minHeight: 60, maxWidth: 12, maxHeight: 120 };
+    default:
+      return { minWidth: 3, minHeight: 180, maxWidth: 12, maxHeight: 650 };
+  }
+};
 
 export function DashboardCanvas({
   initialDocument,
@@ -91,9 +117,9 @@ export function DashboardCanvas({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
 
-  // Stable placeholder-based Drag & Drop state
+  // Drag-and-drop state
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
-  const [placeholderIndex, setPlaceholderIndex] = useState<number | null>(null);
+  const lastSwapRef = useRef<{ a: string; b: string; time: number } | null>(null);
 
   const [expandedCard, setExpandedCard] = useState<GridCardItem | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -110,6 +136,7 @@ export function DashboardCanvas({
     initialHeight: number;
     currentWidth: CardWidth;
     currentHeight: number;
+    hitLimit?: boolean;
   } | null>(null);
 
   const handleRefresh = () => {
@@ -155,7 +182,7 @@ export function DashboardCanvas({
     [isDarkMode],
   );
 
-  // Initial Seed Cards with balanced executive proportions (No tacky colored stripes)
+  // Initial Seed Cards with balanced executive layout
   const defaultCards: GridCardItem[] = useMemo(
     () => [
       {
@@ -221,7 +248,7 @@ export function DashboardCanvas({
         subtitle: 'Calculado desde retail_demo.products & order_items',
         chartKind: 'bar_grouped',
         width: 8,
-        height: 360,
+        height: 340,
       },
       {
         id: 'chart-distribucion-geo',
@@ -229,7 +256,7 @@ export function DashboardCanvas({
         subtitle: 'País de destino de envíos',
         chartKind: 'donut',
         width: 4,
-        height: 360,
+        height: 340,
       },
       {
         id: 'table-plan-cuentas',
@@ -237,7 +264,7 @@ export function DashboardCanvas({
         subtitle: 'Estructura de balance con niveles 1 > 11 > 111',
         chartKind: 'plan_cuentas',
         width: 6,
-        height: 360,
+        height: 340,
         badge: 'Pixel-Perfect',
       },
       {
@@ -246,7 +273,7 @@ export function DashboardCanvas({
         subtitle: 'Evolución en tiempo real',
         chartKind: 'line',
         width: 6,
-        height: 360,
+        height: 340,
       },
     ],
     [],
@@ -260,11 +287,14 @@ export function DashboardCanvas({
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed.map((item: GridCardItem) => ({
-              ...item,
-              width: Math.max(3, Math.min(12, item.width || 6)) as CardWidth,
-              height: Math.max(150, item.height || 320),
-            }));
+            return parsed.map((item: GridCardItem) => {
+              const limits = getContentLimits(item.chartKind);
+              return {
+                ...item,
+                width: Math.max(limits.minWidth, Math.min(limits.maxWidth, item.width || 6)) as CardWidth,
+                height: Math.max(limits.minHeight, Math.min(limits.maxHeight, item.height || 320)),
+              };
+            });
           }
         }
       } catch {
@@ -274,29 +304,8 @@ export function DashboardCanvas({
     return defaultCards;
   });
 
-  // Calculate live display cards: during drag, insert the placeholder slot at placeholderIndex
-  const displayCards = useMemo(() => {
-    if (!draggedCardId || placeholderIndex === null) {
-      return cards;
-    }
-
-    const draggedItem = cards.find((c) => c.id === draggedCardId);
-    if (!draggedItem) return cards;
-
-    const remaining = cards.filter((c) => c.id !== draggedCardId);
-    const clampedIndex = Math.max(0, Math.min(remaining.length, placeholderIndex));
-
-    const result = [...remaining];
-    result.splice(clampedIndex, 0, {
-      ...draggedItem,
-      id: `${draggedItem.id}-placeholder`,
-      isPlaceholder: true,
-    });
-    return result;
-  }, [cards, draggedCardId, placeholderIndex]);
-
   // =========================================================================
-  // FLIP ANIMATION ENGINE: Liquid Reorganization Transitions
+  // FLIP ANIMATION ENGINE: Organic Layout Sliding Transitions
   // =========================================================================
   const snapshotPositions = () => {
     const map = new Map<string, DOMRect>();
@@ -327,14 +336,14 @@ export function DashboardCanvas({
         el.style.transition = 'none';
 
         requestAnimationFrame(() => {
-          el.style.transition = 'transform 360ms cubic-bezier(0.16, 1, 0.3, 1)';
+          el.style.transition = 'transform 350ms cubic-bezier(0.16, 1, 0.3, 1)';
           el.style.transform = '';
         });
       }
     });
 
     prevCardRects.current.clear();
-  }, [displayCards, draggedCardId]);
+  }, [cards, draggedCardId]);
 
   // Persist to localStorage
   useEffect(() => {
@@ -365,7 +374,7 @@ export function DashboardCanvas({
             summaryValue: dc.summaryValue,
             echartsOption: dc.echartsOption,
             width: dc.chartKind === 'kpi' ? 4 : 6,
-            height: dc.chartKind === 'kpi' ? 160 : 360,
+            height: dc.chartKind === 'kpi' ? 160 : 340,
             badge: 'Personalizada',
           });
         }
@@ -386,6 +395,11 @@ export function DashboardCanvas({
     };
     setCards((prev) => [newHeader, ...prev]);
     setIsEditMode(true);
+  };
+
+  const updateCardWidth = (id: string, width: CardWidth) => {
+    snapshotPositions();
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, width } : c)));
   };
 
   const updateCardField = (
@@ -418,13 +432,11 @@ export function DashboardCanvas({
   };
 
   // =========================================================================
-  // DIRECT RESIZE (PULL LIKE AN IMAGE, 60FPS RAF)
+  // CONTENT-AWARE DIRECT RESIZE (SHRINK & EXPAND WITH ADAPTIVE LIMITS)
   // =========================================================================
   const startResizing = (
     e: React.MouseEvent,
-    cardId: string,
-    initialWidth: CardWidth,
-    initialHeight: number,
+    card: GridCardItem,
     mode: 'corner' | 'bottom' | 'right' = 'corner',
   ) => {
     e.preventDefault();
@@ -436,17 +448,20 @@ export function DashboardCanvas({
       gridContainerRef.current?.getBoundingClientRect().width || 1200;
     const colWidth = containerWidth / 12;
 
+    const limits = getContentLimits(card.chartKind);
+
     setResizingCard({
-      id: cardId,
-      initialWidth,
-      initialHeight,
-      currentWidth: initialWidth,
-      currentHeight: initialHeight,
+      id: card.id,
+      initialWidth: card.width,
+      initialHeight: card.height || 320,
+      currentWidth: card.width,
+      currentHeight: card.height || 320,
+      hitLimit: false,
     });
 
     let rafId: number | null = null;
-    let lastWidth = initialWidth;
-    let lastHeight = initialHeight;
+    let lastWidth = card.width;
+    let lastHeight = card.height || 320;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (rafId) cancelAnimationFrame(rafId);
@@ -455,20 +470,39 @@ export function DashboardCanvas({
         const deltaX = moveEvent.clientX - startX;
         const deltaY = moveEvent.clientY - startY;
 
-        let newWidth = initialWidth;
-        let newHeight = initialHeight;
+        let newWidth = card.width;
+        let newHeight = card.height || 320;
+        let hit = false;
 
         if (mode === 'corner' || mode === 'right') {
           const colDelta = Math.round(deltaX / colWidth);
-          const rawSpan = initialWidth + colDelta;
-          newWidth = Math.max(3, Math.min(12, rawSpan)) as CardWidth;
+          const rawSpan = card.width + colDelta;
+          
+          if (rawSpan <= limits.minWidth) {
+            newWidth = limits.minWidth;
+            if (rawSpan < limits.minWidth) hit = true;
+          } else if (rawSpan >= limits.maxWidth) {
+            newWidth = limits.maxWidth;
+            if (rawSpan > limits.maxWidth) hit = true;
+          } else {
+            newWidth = rawSpan as CardWidth;
+          }
         }
 
         if (mode === 'corner' || mode === 'bottom') {
-          newHeight = Math.max(150, Math.min(750, initialHeight + deltaY));
+          const rawHeight = (card.height || 320) + deltaY;
+          if (rawHeight <= limits.minHeight) {
+            newHeight = limits.minHeight;
+            if (rawHeight < limits.minHeight) hit = true;
+          } else if (rawHeight >= limits.maxHeight) {
+            newHeight = limits.maxHeight;
+            if (rawHeight > limits.maxHeight) hit = true;
+          } else {
+            newHeight = rawHeight;
+          }
         }
 
-        if (newWidth !== lastWidth || Math.abs(newHeight - lastHeight) >= 4) {
+        if (newWidth !== lastWidth || Math.abs(newHeight - lastHeight) >= 3 || hit !== resizingCard?.hitLimit) {
           if (newWidth !== lastWidth) {
             snapshotPositions();
           }
@@ -477,16 +511,17 @@ export function DashboardCanvas({
 
           setCards((prev) =>
             prev.map((c) =>
-              c.id === cardId ? { ...c, width: newWidth, height: newHeight } : c,
+              c.id === card.id ? { ...c, width: newWidth, height: newHeight } : c,
             ),
           );
 
           setResizingCard({
-            id: cardId,
-            initialWidth,
-            initialHeight,
+            id: card.id,
+            initialWidth: card.width,
+            initialHeight: card.height || 320,
             currentWidth: newWidth,
             currentHeight: newHeight,
+            hitLimit: hit,
           });
         }
       });
@@ -515,12 +550,11 @@ export function DashboardCanvas({
   };
 
   // =========================================================================
-  // GHOST PLACEHOLDER DRAG & DROP: Real-Time Smooth Slot Gliding, Zero Bounce
+  // DYNAMIC SWAP REORGANIZATION: 100% Fluid, Anti-PingPong Lock
   // =========================================================================
   const handleDragStart = (id: string, e: React.DragEvent) => {
     setDraggedCardId(id);
-    const initialIndex = cards.findIndex((c) => c.id === id);
-    setPlaceholderIndex(initialIndex);
+    lastSwapRef.current = null;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', id);
   };
@@ -529,49 +563,37 @@ export function DashboardCanvas({
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
 
-    if (!draggedCardId) return;
+    if (!draggedCardId || draggedCardId === targetId) return;
 
-    // Find target index in displayCards
-    const targetIdx = displayCards.findIndex((c) => c.id === targetId);
-    if (targetIdx === -1 || targetIdx === placeholderIndex) return;
-
-    snapshotPositions();
-    setPlaceholderIndex(targetIdx);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (!draggedCardId || placeholderIndex === null) {
-      setDraggedCardId(null);
-      setPlaceholderIndex(null);
+    const now = Date.now();
+    // Anti-oscillation lock: prevent immediate reverse swap between the same two cards
+    if (
+      lastSwapRef.current &&
+      ((lastSwapRef.current.a === draggedCardId && lastSwapRef.current.b === targetId) ||
+       (lastSwapRef.current.a === targetId && lastSwapRef.current.b === draggedCardId)) &&
+      now - lastSwapRef.current.time < 350
+    ) {
       return;
     }
 
+    lastSwapRef.current = { a: draggedCardId, b: targetId, time: now };
     snapshotPositions();
-    // Commit the reordered array from displayCards without the placeholder flag
-    const finalized = displayCards.map((c) => ({
-      ...c,
-      id: c.id.replace('-placeholder', ''),
-      isPlaceholder: false,
-    }));
 
-    setCards(finalized);
-    setDraggedCardId(null);
-    setPlaceholderIndex(null);
+    setCards((prev) => {
+      const fromIdx = prev.findIndex((c) => c.id === draggedCardId);
+      const toIdx = prev.findIndex((c) => c.id === targetId);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      if (moved) next.splice(toIdx, 0, moved);
+      return next;
+    });
   };
 
   const handleDragEnd = () => {
-    if (draggedCardId && placeholderIndex !== null) {
-      snapshotPositions();
-      const finalized = displayCards.map((c) => ({
-        ...c,
-        id: c.id.replace('-placeholder', ''),
-        isPlaceholder: false,
-      }));
-      setCards(finalized);
-    }
     setDraggedCardId(null);
-    setPlaceholderIndex(null);
+    lastSwapRef.current = null;
   };
 
   const getColSpanClass = (w: CardWidth): string => {
@@ -602,7 +624,7 @@ export function DashboardCanvas({
 
   return (
     <div className="flex-1 overflow-y-auto px-6 lg:px-8 py-6 w-full space-y-6 bg-background">
-      {/* Top Action Bar (Refined Metabase Style) */}
+      {/* Top Action Bar (Clean Executive Metabase Style) */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-surface-border">
         <div>
           <div className="flex items-center gap-2.5">
@@ -612,7 +634,7 @@ export function DashboardCanvas({
               Tiempo Real (SSE)
             </span>
             {isEditMode && (
-              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5 border border-primary/20">
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5 border border-primary/20 animate-pulse">
                 <Sparkles className="h-3.5 w-3.5" />
                 Modo Edición Activo
               </span>
@@ -683,42 +705,17 @@ export function DashboardCanvas({
       {/* Unified 12-Column Flexible Grid */}
       <div
         ref={gridContainerRef}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
         className="grid grid-cols-12 gap-5 w-full relative"
       >
-        {displayCards.map((card, idx) => {
+        {cards.map((card, idx) => {
           const colSpanClass = getColSpanClass(card.width);
+          const isBeingDragged = draggedCardId === card.id;
           const isBeingResized = resizingCard?.id === card.id;
           const isEditingThisCard = editingCardId === card.id;
+          const limits = getContentLimits(card.chartKind);
 
           // =====================================================
-          // 1. GHOST PLACEHOLDER SLOT (Liquid Slot Preview)
-          // =====================================================
-          if (card.isPlaceholder) {
-            return (
-              <div
-                key={card.id}
-                ref={(el) => {
-                  if (el) cardDomRefs.current.set(card.id, el);
-                  else cardDomRefs.current.delete(card.id);
-                }}
-                className={`${colSpanClass} rounded-3xl border-2 border-dashed border-primary/40 bg-primary/[0.04] p-6 flex flex-col items-center justify-center text-center transition-all duration-300 animate-in fade-in duration-200`}
-                style={{
-                  height: card.height ? `${card.height}px` : '200px',
-                }}
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-2 shadow-sm">
-                  <ArrowDown className="h-5 w-5 animate-bounce" />
-                </div>
-                <span className="text-xs font-bold text-primary">Soltar aquí para reubicar</span>
-                <span className="text-[11px] text-muted mt-0.5">La cuadrícula se adapta de forma fluida</span>
-              </div>
-            );
-          }
-
-          // =====================================================
-          // 2. ARCHITECTURAL SECTION HEADER (Clean & Minimalist)
+          // 1. ARCHITECTURAL SECTION HEADER (Clean, Defined Divider)
           // =====================================================
           if (card.chartKind === 'section_header') {
             return (
@@ -732,22 +729,24 @@ export function DashboardCanvas({
                 onDragStart={(e) => handleDragStart(card.id, e)}
                 onDragOver={(e) => handleDragOver(e, card.id)}
                 onDragEnd={handleDragEnd}
-                className={`${colSpanClass} py-3 transition-all duration-300 relative group`}
+                className={`${colSpanClass} min-w-0 rounded-2xl bg-surface border border-slate-300 dark:border-slate-700/80 px-5 py-3.5 shadow-sm transition-all duration-300 relative group ${
+                  isBeingDragged ? 'opacity-40 scale-[0.99] border-dashed border-primary' : ''
+                }`}
+                style={{
+                  borderLeftWidth: '5px',
+                  borderLeftColor: 'hsl(var(--primary))',
+                }}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {/* Vertical Blue Indicator Line */}
-                    <div className="h-5 w-1 rounded-full bg-primary shrink-0" />
-
                     {isEditMode && (
                       <div
-                        className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 transition-transform active:scale-95"
+                        className="cursor-grab active:cursor-grabbing p-1.5 rounded-lg hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 transition-transform active:scale-95"
                         title="Arrastrar sección"
                       >
                         <GripVertical className="h-4 w-4" />
                       </div>
                     )}
-
                     <div className="flex-1 min-w-0">
                       {isEditMode ? (
                         <div className="space-y-1">
@@ -781,9 +780,6 @@ export function DashboardCanvas({
                         </div>
                       )}
                     </div>
-
-                    {/* Elegant hairline divider extending across */}
-                    <div className="flex-1 h-px bg-surface-border/70 ml-2 hidden sm:block" />
                   </div>
 
                   {isEditMode && (
@@ -819,7 +815,7 @@ export function DashboardCanvas({
           }
 
           // =====================================================
-          // 3. EXECUTIVE BUSINESS INTELLIGENCE CARDS (Clean & Focused)
+          // 2. EXECUTIVE BUSINESS INTELLIGENCE CARDS (Clean Framing Lines)
           // =====================================================
           return (
             <div
@@ -832,34 +828,45 @@ export function DashboardCanvas({
               onDragStart={(e) => handleDragStart(card.id, e)}
               onDragOver={(e) => handleDragOver(e, card.id)}
               onDragEnd={handleDragEnd}
-              className={`${colSpanClass} rounded-3xl bg-surface p-5 flex flex-col justify-between relative group border border-surface-border/80 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_6px_20px_-4px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_24px_-4px_rgba(0,0,0,0.4)] hover:shadow-lg transition-all duration-300 ${
-                isBeingResized
-                  ? 'ring-2 ring-primary ring-offset-2 shadow-2xl z-20'
+              className={`${colSpanClass} min-w-0 rounded-2xl bg-surface p-5 flex flex-col justify-between relative group border border-slate-300/80 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-primary/50 transition-all duration-300 ${
+                isBeingDragged
+                  ? 'opacity-30 scale-[0.98] border-dashed border-primary shadow-inner bg-primary/5'
+                  : isBeingResized
+                  ? 'ring-2 ring-primary ring-offset-2 shadow-2xl z-20 border-primary'
                   : ''
               }`}
               style={{
                 height: card.height ? `${card.height}px` : undefined,
-                minHeight: '150px',
+                minHeight: `${limits.minHeight}px`,
               }}
             >
               {/* Dimension Tooltip when actively resizing */}
               {isBeingResized && (
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full bg-foreground text-background text-xs font-bold shadow-xl flex items-center gap-1.5 pointer-events-none animate-in fade-in">
+                <div
+                  className={`absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full text-xs font-bold shadow-xl flex items-center gap-1.5 pointer-events-none animate-in fade-in ${
+                    resizingCard?.hitLimit
+                      ? 'bg-amber-500 text-white animate-pulse'
+                      : 'bg-foreground text-background'
+                  }`}
+                >
                   <span>📐 {card.width} columnas ({Math.round((card.width / 12) * 100)}%)</span>
                   <span>•</span>
                   <span>{card.height}px</span>
+                  {resizingCard?.hitLimit && (
+                    <span className="text-[10px] bg-black/20 px-1.5 py-0.2 rounded-full ml-1">Límite óptimo</span>
+                  )}
                 </div>
               )}
 
-              {/* Card Header: Pure Executive Clarity */}
-              <div className="mb-2 shrink-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2 flex-1 min-w-0">
+              {/* Card Header (Structured with crisp division line) */}
+              <div className="mb-2.5 pb-2 border-b border-surface-border/70 shrink-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
                     {/* Drag Handle in Edit Mode */}
                     {isEditMode && (
                       <div
-                        className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 mt-0.5 transition-transform active:scale-95"
-                        title="Arrastrar para reordenar"
+                        className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 transition-transform active:scale-95"
+                        title="Arrastrar para reordenar de forma fluida"
                       >
                         <GripVertical className="h-4 w-4" />
                       </div>
@@ -908,44 +915,69 @@ export function DashboardCanvas({
                           </div>
                         </div>
                       ) : (
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-foreground tracking-tight truncate">
-                              {card.title}
-                            </h3>
-                            {card.badge && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-surface-subtle text-foreground border border-surface-border shrink-0">
-                                {card.badge}
-                              </span>
-                            )}
-                            {isEditMode && (
-                              <button
-                                onClick={() => setEditingCardId(card.id)}
-                                className="p-1 rounded text-muted hover:text-foreground opacity-60 hover:opacity-100 transition-opacity"
-                                title="Editar título y etiquetas"
-                              >
-                                <Edit2 className="h-3 w-3" />
-                              </button>
-                            )}
-                          </div>
-                          {!isEditingThisCard && card.subtitle && (
-                            <p className="text-[11px] text-muted mt-0.5 truncate">{card.subtitle}</p>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-foreground tracking-tight truncate">
+                            {card.title}
+                          </h3>
+                          {card.badge && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-surface-subtle text-foreground border border-surface-border shrink-0">
+                              {card.badge}
+                            </span>
+                          )}
+                          {isEditMode && (
+                            <button
+                              onClick={() => setEditingCardId(card.id)}
+                              className="p-1 rounded text-muted hover:text-foreground opacity-60 hover:opacity-100 transition-opacity"
+                              title="Editar título y etiquetas"
+                            >
+                              <Edit2 className="h-3 w-3" />
+                            </button>
                           )}
                         </div>
+                      )}
+                      {!isEditingThisCard && card.subtitle && (
+                        <p className="text-[11px] text-muted mt-0.5 truncate">{card.subtitle}</p>
                       )}
                     </div>
                   </div>
 
-                  {/* Actions Header Toolbar & Luxury Micro-Icons */}
+                  {/* Actions Header Toolbar */}
                   <div className="flex items-center gap-1 shrink-0">
                     {/* Micro-Icon for KPI cards */}
                     {card.chartKind === 'kpi' && !isEditMode && (
-                      <div className="p-2 rounded-2xl bg-surface-subtle border border-surface-border text-foreground/80">
-                        {card.kpiIcon === 'dollar' && <DollarSign className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
-                        {card.kpiIcon === 'orders' && <ShoppingBag className="h-4 w-4 text-blue-600 dark:text-blue-400" />}
-                        {card.kpiIcon === 'ticket' && <CreditCard className="h-4 w-4 text-purple-600 dark:text-purple-400" />}
-                        {card.kpiIcon === 'wallet' && <Wallet className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
-                        {!card.kpiIcon && <TrendingUp className="h-4 w-4 text-primary" />}
+                      <div className="p-1.5 rounded-xl bg-surface-subtle border border-surface-border text-foreground/80">
+                        {card.kpiIcon === 'dollar' && <DollarSign className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+                        {card.kpiIcon === 'orders' && <ShoppingBag className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
+                        {card.kpiIcon === 'ticket' && <CreditCard className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />}
+                        {card.kpiIcon === 'wallet' && <Wallet className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />}
+                        {!card.kpiIcon && <TrendingUp className="h-3.5 w-3.5 text-primary" />}
+                      </div>
+                    )}
+
+                    {/* Quick Width Buttons in Edit Mode */}
+                    {isEditMode && (
+                      <div className="hidden sm:flex items-center gap-0.5 mr-1 bg-surface-subtle px-1 py-0.5 rounded-lg border border-surface-border text-[10px]">
+                        {[
+                          { w: 3 as CardWidth, label: '1/4' },
+                          { w: 4 as CardWidth, label: '1/3' },
+                          { w: 6 as CardWidth, label: '1/2' },
+                          { w: 8 as CardWidth, label: '2/3' },
+                          { w: 12 as CardWidth, label: 'Full' },
+                        ].map((btn) => (
+                          <button
+                            key={btn.w}
+                            disabled={btn.w < limits.minWidth}
+                            onClick={() => updateCardWidth(card.id, btn.w)}
+                            className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                              card.width === btn.w
+                                ? 'bg-primary text-white shadow-sm'
+                                : 'text-muted hover:text-foreground disabled:opacity-20'
+                            }`}
+                            title={`Ajustar a ancho ${btn.label}`}
+                          >
+                            {btn.label}
+                          </button>
+                        ))}
                       </div>
                     )}
 
@@ -1010,7 +1042,7 @@ export function DashboardCanvas({
                   <EChartsView
                     isDarkMode={isDarkMode}
                     options={card.echartsOption || defaultBarOption}
-                    height={card.height ? Math.max(160, card.height - 70) : 280}
+                    height={card.height ? Math.max(160, card.height - 75) : 280}
                   />
                 )}
 
@@ -1018,7 +1050,7 @@ export function DashboardCanvas({
                   <EChartsView
                     isDarkMode={isDarkMode}
                     options={card.echartsOption || defaultDonutOption}
-                    height={card.height ? Math.max(160, card.height - 70) : 280}
+                    height={card.height ? Math.max(160, card.height - 75) : 280}
                   />
                 )}
 
@@ -1026,15 +1058,15 @@ export function DashboardCanvas({
                   <EChartsView
                     isDarkMode={isDarkMode}
                     options={card.echartsOption || defaultLineOption}
-                    height={card.height ? Math.max(160, card.height - 70) : 260}
+                    height={card.height ? Math.max(160, card.height - 75) : 260}
                   />
                 )}
 
                 {card.chartKind === 'plan_cuentas' && (
                   <div
-                    className="overflow-auto rounded-2xl border border-surface-border h-full"
+                    className="overflow-auto rounded-xl border border-surface-border h-full"
                     style={{
-                      maxHeight: card.height ? `${card.height - 70}px` : undefined,
+                      maxHeight: card.height ? `${card.height - 75}px` : undefined,
                     }}
                   >
                     <table className="w-full text-left text-xs">
@@ -1085,11 +1117,9 @@ export function DashboardCanvas({
 
               {/* Direct Resize Corner Handle (Pull like an image) */}
               <div
-                onMouseDown={(e) =>
-                  startResizing(e, card.id, card.width, card.height || 320, 'corner')
-                }
-                className="absolute bottom-1 right-1 h-5 w-5 cursor-se-resize flex items-end justify-end p-1 text-muted/30 hover:text-primary transition-all z-20 group-hover:opacity-100 opacity-30 hover:scale-125"
-                title="Arrastrá para redimensionar"
+                onMouseDown={(e) => startResizing(e, card, 'corner')}
+                className="absolute bottom-1 right-1 h-5 w-5 cursor-se-resize flex items-end justify-end p-1 text-muted/40 hover:text-primary transition-all z-20 group-hover:opacity-100 opacity-40 hover:scale-125"
+                title="Arrastrá para redimensionar (se ajusta al contenido)"
               >
                 <svg
                   width="10"
@@ -1107,17 +1137,13 @@ export function DashboardCanvas({
 
               {/* Edge Handles */}
               <div
-                onMouseDown={(e) =>
-                  startResizing(e, card.id, card.width, card.height || 320, 'right')
-                }
+                onMouseDown={(e) => startResizing(e, card, 'right')}
                 className="absolute top-6 bottom-6 right-0 w-2 cursor-ew-resize hover:bg-primary/20 transition-colors z-10"
                 title="Arrastrá para ancho"
               />
 
               <div
-                onMouseDown={(e) =>
-                  startResizing(e, card.id, card.width, card.height || 320, 'bottom')
-                }
+                onMouseDown={(e) => startResizing(e, card, 'bottom')}
                 className="absolute bottom-0 left-6 right-6 h-2 cursor-ns-resize hover:bg-primary/20 transition-colors z-10"
                 title="Arrastrá para alto"
               />
