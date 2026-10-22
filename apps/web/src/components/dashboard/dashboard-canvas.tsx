@@ -1,9 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as echarts from 'echarts';
 import type { DashboardCard, DashboardDocument } from '@bi/contracts';
 import { EChartsView } from '../charts/echarts-view';
+import {
+  buildModernBarOption,
+  buildModernDonutOption,
+  buildModernLineOption,
+} from '../../lib/chart-theme';
 import {
   BarChart3,
   Calendar,
@@ -46,86 +51,59 @@ export function DashboardCanvas({
     setTimeout(() => setIsRefreshing(false), 500);
   };
 
-  // Default Bar Chart Configuration
-  const barChartOption: echarts.EChartsOption = {
-    tooltip: { trigger: 'axis' },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: {
-      type: 'category',
-      data: ['Tecnología', 'Oficina', 'Servicios', 'Consultoría'],
-      axisLine: { lineStyle: { color: 'hsl(var(--surface-border))' } },
-      axisLabel: { color: 'hsl(var(--foreground))' },
-    },
-    yAxis: {
-      type: 'value',
-      splitLine: { lineStyle: { color: 'hsl(var(--surface-subtle))' } },
-      axisLabel: { color: 'hsl(var(--foreground))' },
-    },
-    series: [
-      {
-        name: 'Ventas 2026',
-        type: 'bar',
-        data: [4250, 1820, 2950, 1400],
-        itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#3b82f6' },
-            { offset: 1, color: '#1d4ed8' },
-          ]),
-          borderRadius: [6, 6, 0, 0],
-        },
-      },
-    ],
-  };
+  const [isDark, setIsDark] = useState(false);
 
-  // Default Line Chart Configuration
-  const lineChartOption: echarts.EChartsOption = {
-    tooltip: { trigger: 'axis' },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: {
-      type: 'category',
-      data: ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'],
-      axisLine: { lineStyle: { color: 'hsl(var(--surface-border))' } },
-      axisLabel: { color: 'hsl(var(--foreground))' },
-    },
-    yAxis: {
-      type: 'value',
-      splitLine: { lineStyle: { color: 'hsl(var(--surface-subtle))' } },
-      axisLabel: { color: 'hsl(var(--foreground))' },
-    },
-    series: [
-      {
-        name: 'Ingresos',
-        type: 'line',
-        smooth: true,
-        data: [1200, 2400, 3100, 4800],
-        itemStyle: { color: '#8b5cf6' },
-        areaStyle: {
-          color: 'rgba(139, 92, 246, 0.15)',
-        },
-      },
-    ],
-  };
+  // Monitor theme changes for reactive chart palette
+  useEffect(() => {
+    const updateTheme = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+    updateTheme();
 
-  // Default Donut Chart Configuration
-  const donutChartOption: echarts.EChartsOption = {
-    tooltip: { trigger: 'item' },
-    legend: { bottom: '0', left: 'center', textStyle: { color: 'hsl(var(--foreground))' } },
-    series: [
-      {
-        name: 'Distribución',
-        type: 'pie',
-        radius: ['50%', '75%'],
-        avoidLabelOverlap: false,
-        label: { show: false },
-        data: [
-          { value: 1048, name: 'Ecuador' },
-          { value: 735, name: 'Argentina' },
-          { value: 580, name: 'Colombia' },
-          { value: 484, name: 'Chile' },
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
+  // Professional Curated Bar Chart Configuration (Zero harsh black lines, dashed subtle grid)
+  const barChartOption = useMemo(
+    () =>
+      buildModernBarOption(
+        ['Tecnología', 'Oficina', 'Servicios', 'Consultoría'],
+        [4250, 1820, 2950, 1400],
+        'Ventas 2026',
+        isDark,
+      ),
+    [isDark],
+  );
+
+  // Professional Curated Line Chart Configuration (Smooth spline, modern gradient area)
+  const lineChartOption = useMemo(
+    () =>
+      buildModernLineOption(
+        ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'],
+        [1200, 2400, 3100, 4800],
+        'Ingresos',
+        isDark,
+      ),
+    [isDark],
+  );
+
+  // Professional Curated Donut Chart Configuration (Metabase palette, rounded segments)
+  const donutChartOption = useMemo(
+    () =>
+      buildModernDonutOption(
+        [
+          { name: 'Ecuador', value: 1048 },
+          { name: 'Argentina', value: 735 },
+          { name: 'Colombia', value: 580 },
+          { name: 'Chile', value: 484 },
         ],
-      },
-    ],
-  };
+        'Distribución',
+        isDark,
+      ),
+    [isDark],
+  );
 
   return (
     <div className="flex-1 overflow-y-auto p-6 max-w-7xl mx-auto w-full space-y-6 bg-background">

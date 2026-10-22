@@ -8,6 +8,11 @@ import {
   type DataTable,
 } from '../../lib/data-sources';
 import { EChartsView } from '../charts/echarts-view';
+import {
+  buildModernBarOption,
+  buildModernDonutOption,
+  buildModernLineOption,
+} from '../../lib/chart-theme';
 import * as echarts from 'echarts';
 import {
   BarChart3,
@@ -91,77 +96,24 @@ export function VisualBuilderView({
     const values = aggResult.values as number[];
 
     if (chartKind === 'donut') {
-      return {
-        tooltip: { trigger: 'item' },
-        legend: { bottom: '0', left: 'center', textStyle: { color: isDark ? '#94a3b8' : '#334155' } },
-        series: [
-          {
-            name: activeYField,
-            type: 'pie',
-            radius: ['45%', '70%'],
-            data: categories.map((cat, i) => ({
-              name: cat,
-              value: values[i] ?? 0,
-            })),
-          },
-        ],
-      };
+      const donutData = categories.map((cat, i) => ({
+        name: cat,
+        value: values[i] ?? 0,
+      }));
+      return buildModernDonutOption(donutData, activeYField, isDark);
     }
 
     if (chartKind === 'line') {
-      return {
-        tooltip: { trigger: 'axis' },
-        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-        xAxis: {
-          type: 'category',
-          data: categories,
-          axisLine: { lineStyle: { color: isDark ? '#334155' : '#cbd5e1' } },
-        },
-        yAxis: {
-          type: 'value',
-          splitLine: { lineStyle: { color: isDark ? '#1e293b' : '#f1f5f9' } },
-        },
-        series: [
-          {
-            name: activeYField,
-            type: 'line',
-            smooth: true,
-            data: values,
-            itemStyle: { color: '#8b5cf6' },
-            areaStyle: { color: 'rgba(139, 92, 246, 0.15)' },
-          },
-        ],
-      };
+      return buildModernLineOption(categories, values, activeYField, isDark);
     }
 
     // Default bar
-    return {
-      tooltip: { trigger: 'axis' },
-      grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-      xAxis: {
-        type: 'category',
-        data: categories,
-        axisLine: { lineStyle: { color: isDark ? '#334155' : '#cbd5e1' } },
-      },
-      yAxis: {
-        type: 'value',
-        splitLine: { lineStyle: { color: isDark ? '#1e293b' : '#f1f5f9' } },
-      },
-      series: [
-        {
-          name: `${aggFn.toUpperCase()}(${activeYField})`,
-          type: 'bar',
-          data: values,
-          itemStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: '#3b82f6' },
-              { offset: 1, color: '#1d4ed8' },
-            ]),
-            borderRadius: [4, 4, 0, 0],
-          },
-        },
-      ],
-    };
+    return buildModernBarOption(
+      categories,
+      values,
+      `${aggFn.toUpperCase()}(${activeYField})`,
+      isDark,
+    );
   }, [aggResult, chartKind, activeYField, aggFn]);
 
   const handleSave = () => {
