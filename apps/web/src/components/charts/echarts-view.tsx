@@ -41,12 +41,22 @@ export function EChartsView({
 
     chart.setOption(themeAdjustedOptions, true);
 
+    let rafId: number | null = null;
     const resizeObserver = new ResizeObserver(() => {
-      chart.resize();
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        chart.resize({
+          animation: {
+            duration: 300,
+            easing: 'cubicOut',
+          },
+        });
+      });
     });
     resizeObserver.observe(chartRef.current);
 
     return () => {
+      if (rafId) cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
       chart.dispose();
       chartInstance.current = null;

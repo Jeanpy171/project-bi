@@ -1,6 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import * as echarts from 'echarts';
 import type { DashboardCard, DashboardDocument } from '@bi/contracts';
 import { EChartsView } from '../charts/echarts-view';
@@ -65,6 +71,10 @@ interface DashboardCanvasProps {
 
 const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v3';
 
+// Safe SSR layout effect
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
 export function DashboardCanvas({
   initialDocument,
   dynamicCards,
@@ -80,6 +90,9 @@ export function DashboardCanvas({
   const [activeColorPickerCardId, setActiveColorPickerCardId] = useState<string | null>(null);
 
   const gridContainerRef = useRef<HTMLDivElement>(null);
+  const cardDomRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const prevCardRects = useRef<Map<string, DOMRect>>(new Map());
+  const lastSwapTime = useRef<number>(0);
 
   // Resize State for direct manipulation (pulling corners/edges)
   const [resizingCard, setResizingCard] = useState<{
@@ -258,6 +271,50 @@ export function DashboardCanvas({
     return defaultCards;
   });
 
+  // =========================================================================
+  // FLIP ANIMATION ENGINE: Smooth, Organic Gliding Transitions
+  // =========================================================================
+  const snapshotPositions = () => {
+    const map = new Map<string, DOMRect>();
+    cardDomRefs.current.forEach((el, id) => {
+      if (el) {
+        map.set(id, el.getBoundingClientRect());
+      }
+    });
+    prevCardRects.current = map;
+  };
+
+  useIsomorphicLayoutEffect(() => {
+    if (prevCardRects.current.size === 0) return;
+
+    cardDomRefs.current.forEach((el, id) => {
+      if (!el) return;
+      // Do not apply artificial FLIP translate to the item currently held under cursor
+      if (id === draggedCardId) return;
+
+      const prev = prevCardRects.current.get(id);
+      if (!prev) return;
+
+      const current = el.getBoundingClientRect();
+      const dx = prev.left - current.left;
+      const dy = prev.top - current.top;
+
+      if (dx !== 0 || dy !== 0) {
+        // Invert: lock visually to previous position immediately
+        el.style.transform = `translate(${dx}px, ${dy}px)`;
+        el.style.transition = 'none';
+
+        // Play: animate smoothly to natural position via Apple's fluid deceleration curve
+        requestAnimationFrame(() => {
+          el.style.transition = 'transform 380ms cubic-bezier(0.16, 1, 0.3, 1)';
+          el.style.transform = '';
+        });
+      }
+    });
+
+    prevCardRects.current.clear();
+  }, [cards, draggedCardId]);
+
   // Persist to localStorage on change
   useEffect(() => {
     try {
@@ -271,6 +328,7 @@ export function DashboardCanvas({
   useEffect(() => {
     if (dynamicCards.length === 0) return;
 
+    snapshotPositions();
     setCards((prev) => {
       const existingIds = new Set(prev.map((c) => c.id));
       const newItems: GridCardItem[] = [];
@@ -299,6 +357,7 @@ export function DashboardCanvas({
 
   // Add a new Custom Section Header
   const handleAddSectionHeader = () => {
+    snapshotPositions();
     const newHeader: GridCardItem = {
       id: `section-${Date.now()}`,
       title: 'Nuevo Encabezado de Sección',
@@ -328,6 +387,7 @@ export function DashboardCanvas({
   };
 
   const deleteCardById = (id: string) => {
+    snapshotPositions();
     setCards((prev) => prev.filter((c) => c.id !== id));
   };
 
@@ -335,6 +395,7 @@ export function DashboardCanvas({
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= cards.length) return;
 
+    snapshotPositions();
     setCards((prev) => {
       const next = [...prev];
       const item = next[index];
@@ -345,9 +406,9 @@ export function DashboardCanvas({
     });
   };
 
-  // ==========================================
-  // DIRECT MANIPULATION: Drag to Resize (Pull like an image)
-  // ==========================================
+  // =========================================================================
+  // DIRECT MANIPULATION RESIZING (PULL LIKE AN IMAGE WITH 60FPS RAF THROTTLING)
+  // =========================================================================
   const startResizing = (
     e: React.MouseEvent,
     cardId: string,
@@ -372,41 +433,59 @@ export function DashboardCanvas({
       currentHeight: initialHeight,
     });
 
+    let rafId: number | null = null;
+    let lastWidth = initialWidth;
+    let lastHeight = initialHeight;
+
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
+      if (rafId) cancelAnimationFrame(rafId);
 
-      let newWidth = initialWidth;
-      let newHeight = initialHeight;
+      rafId = requestAnimationFrame(() => {
+        const deltaX = moveEvent.clientX - startX;
+        const deltaY = moveEvent.clientY - startY;
 
-      if (mode === 'corner' || mode === 'right') {
-        const colDelta = Math.round(deltaX / colWidth);
-        const rawSpan = initialWidth + colDelta;
-        // Clamp width between 3 (25%) and 12 (100%)
-        newWidth = Math.max(3, Math.min(12, rawSpan)) as CardWidth;
-      }
+        let newWidth = initialWidth;
+        let newHeight = initialHeight;
 
-      if (mode === 'corner' || mode === 'bottom') {
-        // Clamp height between 180px and 800px
-        newHeight = Math.max(180, Math.min(800, initialHeight + deltaY));
-      }
+        if (mode === 'corner' || mode === 'right') {
+          const colDelta = Math.round(deltaX / colWidth);
+          const rawSpan = initialWidth + colDelta;
+          // Clamp width between 3 (25%) and 12 (100%)
+          newWidth = Math.max(3, Math.min(12, rawSpan)) as CardWidth;
+        }
 
-      setCards((prev) =>
-        prev.map((c) =>
-          c.id === cardId ? { ...c, width: newWidth, height: newHeight } : c,
-        ),
-      );
+        if (mode === 'corner' || mode === 'bottom') {
+          // Clamp height between 180px and 800px
+          newHeight = Math.max(180, Math.min(800, initialHeight + deltaY));
+        }
 
-      setResizingCard({
-        id: cardId,
-        initialWidth,
-        initialHeight,
-        currentWidth: newWidth,
-        currentHeight: newHeight,
+        // Only update React state when there is a meaningful stepped change
+        if (newWidth !== lastWidth || Math.abs(newHeight - lastHeight) >= 3) {
+          if (newWidth !== lastWidth) {
+            snapshotPositions();
+          }
+          lastWidth = newWidth;
+          lastHeight = newHeight;
+
+          setCards((prev) =>
+            prev.map((c) =>
+              c.id === cardId ? { ...c, width: newWidth, height: newHeight } : c,
+            ),
+          );
+
+          setResizingCard({
+            id: cardId,
+            initialWidth,
+            initialHeight,
+            currentWidth: newWidth,
+            currentHeight: newHeight,
+          });
+        }
       });
     };
 
     const onMouseUp = () => {
+      if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       document.body.style.cursor = '';
@@ -427,9 +506,9 @@ export function DashboardCanvas({
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  // ==========================================
-  // DYNAMIC DRAG & DROP: Real-Time Instant Swap
-  // ==========================================
+  // =========================================================================
+  // DYNAMIC DRAG & DROP: Throttled Real-Time Swap with FLIP Glide
+  // =========================================================================
   const handleDragStart = (id: string, e: React.DragEvent) => {
     setDraggedCardId(id);
     e.dataTransfer.effectAllowed = 'move';
@@ -442,7 +521,13 @@ export function DashboardCanvas({
 
     if (!draggedCardId || draggedCardId === targetId) return;
 
-    // Real-Time Swap: Cards immediately shift to the other side as you drag over!
+    const now = Date.now();
+    // Throttle swaps by 160ms so cards glide smoothly without oscillating bounce
+    if (now - lastSwapTime.current < 160) return;
+    lastSwapTime.current = now;
+
+    snapshotPositions();
+
     setCards((prev) => {
       const fromIdx = prev.findIndex((c) => c.id === draggedCardId);
       const toIdx = prev.findIndex((c) => c.id === targetId);
@@ -510,7 +595,7 @@ export function DashboardCanvas({
               Tiempo Real (SSE)
             </span>
             {isEditMode && (
-              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5 border border-primary/20 animate-pulse">
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5 border border-primary/20">
                 <Sparkles className="h-3.5 w-3.5" />
                 Modo Edición Activo
               </span>
@@ -528,7 +613,7 @@ export function DashboardCanvas({
 
           <button
             onClick={handleRefresh}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>Refrescar</span>
@@ -537,7 +622,7 @@ export function DashboardCanvas({
           {/* Add Section Header Button */}
           <button
             onClick={handleAddSectionHeader}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             title="Añadir separador o encabezado de sección"
           >
             <Heading className="h-3.5 w-3.5 text-primary" />
@@ -550,9 +635,9 @@ export function DashboardCanvas({
               setIsEditMode((prev) => !prev);
               setActiveColorPickerCardId(null);
             }}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all shadow-sm ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all duration-250 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
               isEditMode
-                ? 'border-primary bg-primary text-white shadow-primary/20'
+                ? 'border-primary bg-primary text-white shadow-primary/25'
                 : 'border-surface-border bg-surface text-foreground hover:bg-surface-subtle'
             }`}
           >
@@ -562,7 +647,7 @@ export function DashboardCanvas({
 
           <button
             onClick={onNavigateToBuilder}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary-hover transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary-hover transition-all duration-250 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
             <span>+ Añadir Pregunta</span>
@@ -570,7 +655,7 @@ export function DashboardCanvas({
 
           <button
             onClick={() => setIsShareModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface border border-surface-border text-foreground text-xs font-semibold hover:bg-surface-subtle transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface border border-surface-border text-foreground text-xs font-semibold hover:bg-surface-subtle transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             title="Compartir enlace o incrustar tablero"
           >
             <Share2 className="h-3.5 w-3.5 text-muted" />
@@ -581,23 +666,23 @@ export function DashboardCanvas({
 
       {/* Edit Mode Instruction Banner */}
       {isEditMode && (
-        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in duration-200">
+        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in duration-300">
           <div className="flex items-center gap-2.5 text-foreground">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white font-bold shrink-0 shadow-sm">
               <GripVertical className="h-5 w-5" />
             </div>
             <div>
-              <span className="font-bold text-sm block">Modo de Redimensionamiento y Reorganización Directa</span>
+              <span className="font-bold text-sm block">Modo de Redimensionamiento y Reorganización Fluida</span>
               <span className="text-muted block text-xs mt-0.5">
-                • <strong>Redimensionar:</strong> Jalá la esquina inferior derecha ⤡ o los bordes de cualquier tarjeta como una imagen.
-                • <strong>Reorganizar:</strong> Arrastrá desde el asa ⠿ y verás cómo las demás tarjetas se desplazan dinámicamente en tiempo real.
+                • <strong>Redimensionar:</strong> Jalá la esquina inferior derecha ⤡ o los bordes suavemente como una imagen.
+                • <strong>Reorganizar:</strong> Arrastrá desde el asa ⠿ y verás cómo las demás tarjetas se desplazan con una transición líquida y elegante.
               </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleAddSectionHeader}
-              className="px-3 py-1.5 rounded-lg border border-primary/30 bg-surface text-primary font-bold hover:bg-primary/10 shrink-0 text-xs"
+              className="px-3 py-1.5 rounded-lg border border-primary/30 bg-surface text-primary font-bold hover:bg-primary/10 shrink-0 text-xs transition-colors"
             >
               + Añadir Sección
             </button>
@@ -606,7 +691,7 @@ export function DashboardCanvas({
                 setIsEditMode(false);
                 setActiveColorPickerCardId(null);
               }}
-              className="px-4 py-1.5 rounded-lg bg-primary text-white font-bold hover:bg-primary-hover shrink-0 shadow-sm text-xs"
+              className="px-4 py-1.5 rounded-lg bg-primary text-white font-bold hover:bg-primary-hover shrink-0 shadow-sm text-xs transition-all duration-200"
             >
               Guardar Cambios
             </button>
@@ -629,18 +714,26 @@ export function DashboardCanvas({
             return (
               <div
                 key={card.id}
+                ref={(el) => {
+                  if (el) cardDomRefs.current.set(card.id, el);
+                  else cardDomRefs.current.delete(card.id);
+                }}
                 draggable={isEditMode}
                 onDragStart={(e) => handleDragStart(card.id, e)}
                 onDragOver={(e) => handleDragOver(e, card.id)}
                 onDragEnd={handleDragEnd}
-                className={`${colSpanClass} rounded-2xl bg-surface/80 border p-4 transition-all duration-300 relative ${
+                className={`${colSpanClass} rounded-2xl bg-surface/90 backdrop-blur-md border p-4.5 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] relative ${
                   isBeingDragged
-                    ? 'opacity-40 scale-[0.98] border-dashed border-primary shadow-inner'
-                    : 'border-surface-border'
+                    ? 'opacity-30 scale-[0.98] border-dashed border-primary shadow-inner'
+                    : 'border-surface-border shadow-sm'
                 }`}
                 style={
                   card.customColor
-                    ? { borderLeftWidth: '6px', borderLeftColor: card.customColor }
+                    ? {
+                        borderLeftWidth: '6px',
+                        borderLeftColor: card.customColor,
+                        boxShadow: `0 4px 20px -2px ${card.customColor}18`,
+                      }
                     : undefined
                 }
               >
@@ -648,7 +741,7 @@ export function DashboardCanvas({
                   <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     {isEditMode && (
                       <div
-                        className="cursor-grab active:cursor-grabbing p-1.5 rounded hover:bg-surface-subtle text-muted hover:text-foreground shrink-0"
+                        className="cursor-grab active:cursor-grabbing p-1.5 rounded-xl hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 transition-transform hover:scale-110 active:scale-95"
                         title="Arrastrar sección para mover"
                       >
                         <GripVertical className="h-5 w-5" />
@@ -664,7 +757,7 @@ export function DashboardCanvas({
                               updateCardField(card.id, { title: e.target.value })
                             }
                             placeholder="Título de la sección..."
-                            className="w-full px-2.5 py-1 rounded-lg border border-surface-border bg-surface text-base font-bold text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                            className="w-full px-2.5 py-1 rounded-lg border border-surface-border bg-surface text-base font-bold text-foreground focus:ring-1 focus:ring-primary focus:outline-none transition-shadow"
                           />
                           <input
                             type="text"
@@ -673,7 +766,7 @@ export function DashboardCanvas({
                               updateCardField(card.id, { subtitle: e.target.value })
                             }
                             placeholder="Descripción o subtítulo de la sección..."
-                            className="w-full px-2.5 py-0.5 rounded-lg border border-surface-border bg-surface text-xs text-muted focus:ring-1 focus:ring-primary focus:outline-none"
+                            className="w-full px-2.5 py-0.5 rounded-lg border border-surface-border bg-surface text-xs text-muted focus:ring-1 focus:ring-primary focus:outline-none transition-shadow"
                           />
                         </div>
                       ) : (
@@ -694,7 +787,7 @@ export function DashboardCanvas({
                     <div className="flex items-center gap-2 shrink-0">
                       {/* Color Picker */}
                       <label
-                        className="flex items-center gap-1.5 text-xs font-semibold text-muted cursor-pointer px-2.5 py-1.5 rounded-xl border border-surface-border bg-surface hover:bg-surface-subtle shadow-sm"
+                        className="flex items-center gap-1.5 text-xs font-semibold text-muted cursor-pointer px-2.5 py-1.5 rounded-xl border border-surface-border bg-surface hover:bg-surface-subtle shadow-sm transition-all hover:scale-[1.02]"
                         title="Elegir color de la sección"
                       >
                         <input
@@ -706,11 +799,11 @@ export function DashboardCanvas({
                         <span>Color</span>
                       </label>
 
-                      <div className="flex items-center gap-1 bg-surface-subtle p-1 rounded-xl border border-surface-border shadow-sm">
+                      <div className="flex items-center gap-0.5 bg-surface-subtle p-0.5 rounded-xl border border-surface-border shadow-sm">
                         <button
                           onClick={() => moveCard(idx, 'up')}
                           disabled={idx === 0}
-                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
+                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30 transition-transform active:scale-90"
                           title="Mover arriba"
                         >
                           <ArrowUp className="h-3.5 w-3.5" />
@@ -718,7 +811,7 @@ export function DashboardCanvas({
                         <button
                           onClick={() => moveCard(idx, 'down')}
                           disabled={idx === cards.length - 1}
-                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
+                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30 transition-transform active:scale-90"
                           title="Mover abajo"
                         >
                           <ArrowDown className="h-3.5 w-3.5" />
@@ -744,37 +837,46 @@ export function DashboardCanvas({
           return (
             <div
               key={card.id}
+              ref={(el) => {
+                if (el) cardDomRefs.current.set(card.id, el);
+                else cardDomRefs.current.delete(card.id);
+              }}
               draggable={isEditMode && !resizingCard}
               onDragStart={(e) => handleDragStart(card.id, e)}
               onDragOver={(e) => handleDragOver(e, card.id)}
               onDragEnd={handleDragEnd}
-              className={`${colSpanClass} rounded-2xl bg-surface p-5 flex flex-col justify-between transition-all duration-300 relative group border ${
+              className={`${colSpanClass} rounded-3xl bg-surface/95 backdrop-blur-md p-5 flex flex-col justify-between relative group border transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                 isBeingDragged
-                  ? 'opacity-40 scale-[0.98] border-dashed border-primary shadow-inner'
+                  ? 'opacity-30 scale-[0.97] border-dashed border-primary shadow-inner bg-primary/5'
                   : isBeingResized
-                  ? 'ring-2 ring-primary ring-offset-2 shadow-2xl border-primary'
-                  : 'border-surface-border shadow-sm hover:border-primary/40'
+                  ? 'ring-2 ring-primary ring-offset-2 shadow-2xl border-primary scale-[1.008] z-20'
+                  : 'border-surface-border shadow-sm hover:shadow-xl hover:border-primary/40'
               }`}
               style={{
                 borderColor: card.customColor || undefined,
                 boxShadow: card.customColor
-                  ? `0 4px 20px ${card.customColor}20`
+                  ? `0 6px 24px -2px ${card.customColor}25`
                   : undefined,
                 height: card.height ? `${card.height}px` : undefined,
                 minHeight: '200px',
+                transition:
+                  'height 240ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1), border-color 200ms ease',
               }}
             >
               {/* Highlight Top Accent Bar */}
               {card.customColor && (
                 <div
-                  className="absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl"
-                  style={{ backgroundColor: card.customColor }}
+                  className="absolute top-0 left-0 right-0 h-1.5 rounded-t-3xl transition-colors duration-300"
+                  style={{
+                    backgroundColor: card.customColor,
+                    boxShadow: `0 0 12px ${card.customColor}50`,
+                  }}
                 />
               )}
 
               {/* Dimension Tooltip when actively resizing */}
               {isBeingResized && (
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full bg-foreground text-background text-xs font-bold shadow-xl flex items-center gap-1.5 pointer-events-none animate-in fade-in">
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-foreground text-background text-xs font-bold shadow-2xl flex items-center gap-1.5 pointer-events-none animate-in fade-in duration-200">
                   <span>📐 {card.width} columnas ({Math.round((card.width / 12) * 100)}%)</span>
                   <span>•</span>
                   <span>{card.height}px</span>
@@ -788,8 +890,8 @@ export function DashboardCanvas({
                     {/* Drag Handle in Edit Mode */}
                     {isEditMode && (
                       <div
-                        className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 mt-0.5"
-                        title="Arrastrar para reorganizar (se desplaza en tiempo real)"
+                        className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-surface-subtle text-muted hover:text-foreground shrink-0 mt-0.5 transition-transform hover:scale-110 active:scale-95"
+                        title="Arrastrar para reorganizar (desplazamiento fluido en tiempo real)"
                       >
                         <GripVertical className="h-4 w-4" />
                       </div>
@@ -805,7 +907,7 @@ export function DashboardCanvas({
                               updateCardField(card.id, { title: e.target.value })
                             }
                             placeholder="Título..."
-                            className="w-full px-2 py-0.5 rounded border border-surface-border bg-surface text-sm font-bold text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                            className="w-full px-2 py-0.5 rounded border border-surface-border bg-surface text-sm font-bold text-foreground focus:ring-1 focus:ring-primary focus:outline-none transition-shadow"
                           />
                           <div className="flex items-center gap-1.5">
                             <input
@@ -815,7 +917,7 @@ export function DashboardCanvas({
                                 updateCardField(card.id, { subtitle: e.target.value })
                               }
                               placeholder="Subtítulo..."
-                              className="flex-1 px-2 py-0.5 rounded border border-surface-border bg-surface text-[11px] text-muted focus:ring-1 focus:ring-primary focus:outline-none"
+                              className="flex-1 px-2 py-0.5 rounded border border-surface-border bg-surface text-[11px] text-muted focus:ring-1 focus:ring-primary focus:outline-none transition-shadow"
                             />
                             <input
                               type="text"
@@ -824,7 +926,7 @@ export function DashboardCanvas({
                                 updateCardField(card.id, { badge: e.target.value })
                               }
                               placeholder="Badge..."
-                              className="w-20 px-2 py-0.5 rounded border border-surface-border bg-surface text-[10px] text-muted focus:ring-1 focus:ring-primary focus:outline-none"
+                              className="w-20 px-2 py-0.5 rounded border border-surface-border bg-surface text-[10px] text-muted focus:ring-1 focus:ring-primary focus:outline-none transition-shadow"
                             />
                           </div>
                         </div>
@@ -836,7 +938,7 @@ export function DashboardCanvas({
                             </h3>
                             {card.badge && (
                               <span
-                                className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0"
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 transition-colors"
                                 style={
                                   card.customColor
                                     ? {
@@ -868,18 +970,18 @@ export function DashboardCanvas({
                           onClick={() =>
                             setActiveColorPickerCardId(isColorPickerOpen ? null : card.id)
                           }
-                          className="p-1.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle transition-all"
+                          className="p-1.5 rounded-xl border border-surface-border bg-surface hover:bg-surface-subtle transition-all duration-200 hover:scale-105"
                           title="Cambiar color de acento"
                         >
                           <div
-                            className="h-3.5 w-3.5 rounded-full border border-black/20"
+                            className="h-3.5 w-3.5 rounded-full border border-black/20 transition-transform"
                             style={{ backgroundColor: card.customColor || '#2563eb' }}
                           />
                         </button>
 
                         {/* Floating Color Menu Dropdown */}
                         {isColorPickerOpen && (
-                          <div className="absolute right-0 top-8 z-30 p-2.5 rounded-2xl bg-surface border border-surface-border shadow-2xl w-48 space-y-2 animate-in fade-in">
+                          <div className="absolute right-0 top-8 z-30 p-2.5 rounded-2xl bg-surface border border-surface-border shadow-2xl w-48 space-y-2 animate-in fade-in duration-200">
                             <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">
                               Color de Acento
                             </span>
@@ -892,7 +994,7 @@ export function DashboardCanvas({
                                     setActiveColorPickerCardId(null);
                                   }}
                                   title={hl.label}
-                                  className="h-6 w-6 rounded-lg transition-transform hover:scale-110 flex items-center justify-center border border-surface-border shadow-sm"
+                                  className="h-6 w-6 rounded-lg transition-transform hover:scale-115 flex items-center justify-center border border-surface-border shadow-sm active:scale-95"
                                   style={{ backgroundColor: hl.value }}
                                 >
                                   {card.customColor === hl.value && (
@@ -917,11 +1019,11 @@ export function DashboardCanvas({
 
                     {/* Up / Down / Delete in Edit Mode */}
                     {isEditMode && (
-                      <div className="flex items-center gap-0.5 bg-surface-subtle p-0.5 rounded-lg border border-surface-border">
+                      <div className="flex items-center gap-0.5 bg-surface-subtle p-0.5 rounded-xl border border-surface-border">
                         <button
                           onClick={() => moveCard(idx, 'up')}
                           disabled={idx === 0}
-                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
+                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30 transition-transform active:scale-90"
                           title="Mover antes"
                         >
                           <ArrowUp className="h-3 w-3" />
@@ -929,7 +1031,7 @@ export function DashboardCanvas({
                         <button
                           onClick={() => moveCard(idx, 'down')}
                           disabled={idx === cards.length - 1}
-                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30"
+                          className="p-1 rounded text-muted hover:text-foreground disabled:opacity-30 transition-transform active:scale-90"
                           title="Mover después"
                         >
                           <ArrowDown className="h-3 w-3" />
@@ -947,7 +1049,7 @@ export function DashboardCanvas({
                     {/* Functional Expand Button */}
                     <button
                       onClick={() => setExpandedCard(card)}
-                      className="text-muted hover:text-foreground p-1.5 rounded-lg hover:bg-surface-subtle transition-all"
+                      className="text-muted hover:text-foreground p-1.5 rounded-xl hover:bg-surface-subtle transition-all duration-200 hover:scale-105 active:scale-95"
                       title="Expandir a pantalla completa"
                     >
                       <Maximize2 className="h-3.5 w-3.5" />
@@ -960,7 +1062,7 @@ export function DashboardCanvas({
               <div className="flex-1 flex flex-col justify-center min-h-0 overflow-hidden">
                 {card.chartKind === 'kpi' && (
                   <div className="py-2 space-y-1">
-                    <div className="text-3xl font-black text-foreground tracking-tight font-mono">
+                    <div className="text-3xl font-black text-foreground tracking-tight font-mono transition-transform duration-300">
                       {card.summaryValue}
                     </div>
                     {card.trendText && (
@@ -998,7 +1100,7 @@ export function DashboardCanvas({
 
                 {card.chartKind === 'plan_cuentas' && (
                   <div
-                    className="overflow-auto rounded-xl border border-surface-border h-full"
+                    className="overflow-auto rounded-xl border border-surface-border h-full transition-all duration-300"
                     style={{
                       maxHeight: card.height ? `${card.height - 85}px` : undefined,
                     }}
@@ -1057,8 +1159,8 @@ export function DashboardCanvas({
                 onMouseDown={(e) =>
                   startResizing(e, card.id, card.width, card.height || 320, 'corner')
                 }
-                className="absolute bottom-1 right-1 h-6 w-6 cursor-se-resize flex items-end justify-end p-1 text-muted hover:text-primary transition-all z-20 group-hover:opacity-100 opacity-60 hover:scale-125"
-                title="Arrastrá para redimensionar ancho y alto (como una imagen)"
+                className="absolute bottom-1.5 right-1.5 h-6 w-6 cursor-se-resize flex items-end justify-end p-1 text-muted/60 hover:text-primary transition-all duration-200 z-20 group-hover:opacity-100 opacity-40 hover:scale-125"
+                title="Arrastrá suavemente para redimensionar ancho y alto"
               >
                 <svg
                   width="12"
@@ -1080,8 +1182,8 @@ export function DashboardCanvas({
                 onMouseDown={(e) =>
                   startResizing(e, card.id, card.width, card.height || 320, 'right')
                 }
-                className="absolute top-8 bottom-8 right-0 w-2 cursor-ew-resize hover:bg-primary/30 transition-colors z-10"
-                title="Arrastrá horizontalmente para cambiar ancho de columnas"
+                className="absolute top-8 bottom-8 right-0 w-2.5 cursor-ew-resize hover:bg-primary/25 rounded-l transition-colors duration-200 z-10"
+                title="Arrastrá horizontalmente para cambiar columnas"
               />
 
               {/* Bottom Edge Handle (Vertical Height Only) */}
@@ -1089,8 +1191,8 @@ export function DashboardCanvas({
                 onMouseDown={(e) =>
                   startResizing(e, card.id, card.width, card.height || 320, 'bottom')
                 }
-                className="absolute bottom-0 left-8 right-8 h-2 cursor-ns-resize hover:bg-primary/30 transition-colors z-10"
-                title="Arrastrá verticalmente para cambiar la altura"
+                className="absolute bottom-0 left-8 right-8 h-2.5 cursor-ns-resize hover:bg-primary/25 rounded-t transition-colors duration-200 z-10"
+                title="Arrastrá verticalmente para cambiar altura"
               />
             </div>
           );
