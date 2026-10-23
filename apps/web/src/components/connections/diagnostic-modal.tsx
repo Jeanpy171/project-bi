@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { ConnectionConfig, DiagnosticReport } from '@bi/contracts';
 import {
+  Activity,
   AlertCircle,
   Check,
   CheckCircle2,
@@ -149,9 +150,9 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
               <Server className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-foreground">Conectar Base de Datos Propia</h2>
+              <h2 className="text-lg font-bold text-foreground">Conectar Base de Datos PostgreSQL</h2>
               <p className="text-xs text-muted">
-                Asistente guiado para conectar PostgreSQL con verificación de red y credenciales
+                Configurá tu base de datos y probá la conexión antes de guardar
               </p>
             </div>
           </div>
@@ -210,6 +211,7 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
                 onChange={(e) => setConfig({ ...config, port: Number(e.target.value) })}
                 className="w-full rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
               />
+              <span className="text-[10px] text-muted block mt-1">Docker Demo: 5433 • Local: 5432</span>
             </div>
           </div>
 
@@ -256,7 +258,7 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
                     <AlertCircle className="h-5 w-5 text-danger" />
                   )}
                   <span className="text-sm font-bold text-foreground">
-                    {report.isHealthy ? 'Diagnóstico Exitoso - Conexión Verificada' : 'Fallo en Diagnóstico'}
+                    {report.isHealthy ? 'Conexión Exitosa - Lista para Usar' : 'No se pudo conectar a la base de datos'}
                   </span>
                 </div>
                 <span className="text-xs font-medium text-muted">{report.latencyMs} ms de latencia</span>
@@ -309,10 +311,19 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
             <button
               onClick={handleTest}
               disabled={isLoading}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-surface-border bg-surface text-foreground hover:bg-surface-subtle transition-all shadow-sm disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border border-surface-border bg-surface text-foreground hover:bg-surface-subtle transition-all shadow-sm disabled:opacity-50"
             >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <Server className="h-4 w-4 text-primary" />}
-              Diagnosticar
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span>Probando Conexión...</span>
+                </>
+              ) : (
+                <>
+                  <Activity className="h-4 w-4 text-primary" />
+                  <span>Probar Conexión</span>
+                </>
+              )}
             </button>
             <button
               onClick={handleSaveAndUse}
