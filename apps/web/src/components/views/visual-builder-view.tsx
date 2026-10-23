@@ -9,7 +9,11 @@ import {
   type DataTable,
 } from '../../lib/data-sources';
 import { EChartsView } from '../charts/echarts-view';
-import { FinancialStatementCard } from '../financial/financial-statement-card';
+import {
+  FinancialStatementCard,
+  type FinancialStatementData,
+} from '../financial/financial-statement-card';
+import type { DynamicCard } from '../dashboard/dashboard-canvas';
 import {
   ACCENT_COLOR_PRESETS,
   type AccentColorName,
@@ -54,29 +58,7 @@ interface VisualBuilderViewProps {
   readonly dataSources: readonly DataSource[];
   readonly preselectedSourceId?: string;
   readonly preselectedTableId?: string;
-  readonly onSaveToDashboard: (card: {
-    title: string;
-    titleSize?: TitleFontSize;
-    titleFontSize?: number;
-    titleWeight?: TitleFontWeight;
-    subtitle?: string;
-    subtitleFontSize?: number;
-    cardTheme?: CardTheme;
-    headerPosition?: HeaderPosition;
-    headerAlignment?: HeaderAlignment;
-    colorMode?: ColorMode;
-    chartKind: DashboardCard['chartKind'];
-    echartsOption: echarts.EChartsOption;
-    sourceName: string;
-    tableName: string;
-    summaryValue?: string;
-    badge?: string;
-    badgeStyle?: BadgeStyle;
-    badgePosition?: BadgePosition;
-    accentColor?: string;
-    kpiIcon?: 'dollar' | 'orders' | 'ticket' | 'wallet' | 'trend' | 'users' | 'zap' | 'target';
-    goalValue?: number;
-  }) => void;
+  readonly onSaveToDashboard: (card: DynamicCard) => void;
   readonly onOpenUploadExcel: () => void;
   readonly isDarkMode?: boolean;
 }
@@ -110,6 +92,9 @@ export function VisualBuilderView({
 
   const [chartKind, setChartKind] = useState<DashboardCard['chartKind']>('bar_grouped');
   const [isCatalogDrawerOpen, setIsCatalogDrawerOpen] = useState(false);
+  const [customFinancialData, setCustomFinancialData] = useState<
+    FinancialStatementData | undefined
+  >(undefined);
 
   // Field assignments & Typography
   const [title, setTitle] = useState('');
@@ -305,13 +290,17 @@ export function VisualBuilderView({
       echartsOption: chartOption,
       sourceName: currentSource?.name || 'Origen',
       tableName: currentTable?.name || 'Tabla',
-      summaryValue: `$${aggResult.totalSum.toLocaleString()}`,
+      summaryValue:
+        chartKind === 'table_hierarchical'
+          ? undefined
+          : `$${aggResult.totalSum.toLocaleString()}`,
       badge: showBadge && badgeText.trim() ? badgeText.trim() : undefined,
       badgeStyle,
       badgePosition,
       accentColor: activeHex,
       kpiIcon,
       goalValue: chartKind === 'gauge' ? goalValue : undefined,
+      financialData: chartKind === 'table_hierarchical' ? customFinancialData : undefined,
     });
     setIsSavedFeedback(true);
     setTimeout(() => setIsSavedFeedback(false), 2000);
@@ -1209,7 +1198,15 @@ export function VisualBuilderView({
                 </div>
               ) : chartKind === 'table_hierarchical' ? (
                 <div className="w-full">
-                  <FinancialStatementCard isDarkMode={isDarkMode} isCompact={false} />
+                  <FinancialStatementCard
+                    isDarkMode={isDarkMode}
+                    isCompact={false}
+                    rows={activeRows}
+                    tableName={currentTable?.name}
+                    sourceName={currentSource?.name}
+                    initialData={customFinancialData}
+                    onDataChange={setCustomFinancialData}
+                  />
                 </div>
               ) : (
                 <div className="w-full">

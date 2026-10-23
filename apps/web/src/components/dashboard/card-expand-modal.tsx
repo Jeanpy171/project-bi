@@ -296,9 +296,14 @@ export function CardExpandModal({
             </div>
           )}
 
-          {(activeCard.chartKind === 'plan_cuentas' || activeCard.chartKind === 'financial_statement') && (
+          {(activeCard.chartKind === 'plan_cuentas' ||
+            activeCard.chartKind === 'financial_statement' ||
+            activeCard.chartKind === 'table_hierarchical') && (
             <div className="overflow-x-auto rounded-2xl border border-surface-border bg-white dark:bg-slate-950 p-4 shadow-sm">
-              <FinancialStatementCard isDarkMode={isDarkMode} />
+              <FinancialStatementCard
+                initialData={activeCard.financialData}
+                isDarkMode={isDarkMode}
+              />
             </div>
           )}
 

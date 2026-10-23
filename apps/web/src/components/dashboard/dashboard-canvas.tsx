@@ -19,7 +19,10 @@ import { CardExpandModal } from './card-expand-modal';
 import { ShareDashboardModal } from './share-dashboard-modal';
 import { ExportPdfModal } from './export-pdf-modal';
 import { DashboardOnboarding } from './dashboard-onboarding';
-import { FinancialStatementCard } from '../financial/financial-statement-card';
+import {
+  FinancialStatementCard,
+  type FinancialStatementData,
+} from '../financial/financial-statement-card';
 import type { DataSource } from '../../lib/data-sources';
 import {
   ArrowDown,
@@ -85,6 +88,7 @@ export interface GridCardItem {
   accentColor?: string;
   kpiIcon?: 'dollar' | 'orders' | 'ticket' | 'wallet' | 'trend' | 'users' | 'zap' | 'target';
   goalValue?: number;
+  financialData?: FinancialStatementData;
 }
 
 export interface DynamicCard {
@@ -109,6 +113,7 @@ export interface DynamicCard {
   readonly accentColor?: string;
   readonly kpiIcon?: 'dollar' | 'orders' | 'ticket' | 'wallet' | 'trend' | 'users' | 'zap' | 'target';
   readonly goalValue?: number;
+  readonly financialData?: FinancialStatementData;
 }
 
 interface DashboardCanvasProps {
@@ -534,8 +539,21 @@ export function DashboardCanvas({
             accentColor: dc.accentColor,
             kpiIcon: dc.kpiIcon,
             goalValue: dc.goalValue,
-            width: dc.chartKind === 'kpi' ? 3 : dc.chartKind === 'gauge' ? 4 : 6,
-            height: dc.chartKind === 'kpi' ? 180 : 340,
+            financialData: dc.financialData,
+            width:
+              dc.chartKind === 'kpi'
+                ? 3
+                : dc.chartKind === 'gauge'
+                ? 4
+                : dc.chartKind === 'table_hierarchical' || dc.chartKind === 'financial_statement'
+                ? 12
+                : 6,
+            height:
+              dc.chartKind === 'kpi'
+                ? 180
+                : dc.chartKind === 'table_hierarchical' || dc.chartKind === 'financial_statement'
+                ? 560
+                : 340,
           });
         }
       });
@@ -644,8 +662,21 @@ export function DashboardCanvas({
             chartKind: dc.chartKind,
             summaryValue: dc.summaryValue,
             echartsOption: dc.echartsOption,
-            width: dc.chartKind === 'kpi' ? 3 : dc.chartKind === 'gauge' ? 4 : 6,
-            height: dc.chartKind === 'kpi' ? 180 : 340,
+            financialData: dc.financialData,
+            width:
+              dc.chartKind === 'kpi'
+                ? 3
+                : dc.chartKind === 'gauge'
+                ? 4
+                : dc.chartKind === 'table_hierarchical' || dc.chartKind === 'financial_statement'
+                ? 12
+                : 6,
+            height:
+              dc.chartKind === 'kpi'
+                ? 180
+                : dc.chartKind === 'table_hierarchical' || dc.chartKind === 'financial_statement'
+                ? 560
+                : 340,
             badge: dc.badge || 'Personalizada',
             accentColor: dc.accentColor,
             kpiIcon: dc.kpiIcon,
@@ -1552,14 +1583,20 @@ export function DashboardCanvas({
                   />
                 )}
 
-                {(card.chartKind === 'plan_cuentas' || card.chartKind === 'financial_statement') && (
+                {(card.chartKind === 'plan_cuentas' ||
+                  card.chartKind === 'financial_statement' ||
+                  card.chartKind === 'table_hierarchical') && (
                   <div
                     className="overflow-auto rounded-xl border border-surface-border h-full p-2 bg-white dark:bg-slate-950"
                     style={{
                       maxHeight: card.height ? `${card.height - 75}px` : undefined,
                     }}
                   >
-                    <FinancialStatementCard isCompact={card.width < 10} isDarkMode={isDarkMode} />
+                    <FinancialStatementCard
+                      initialData={card.financialData}
+                      isCompact={card.width < 10}
+                      isDarkMode={isDarkMode}
+                    />
                   </div>
                 )}
               </div>

@@ -1,40 +1,44 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
   Download,
   Edit2,
+  Plus,
   Printer,
+  RefreshCw,
+  Trash2,
+  X,
 } from 'lucide-react';
 
 export type FinancialTheme = 'classic_blue' | 'corporate_navy' | 'emerald_finance' | 'minimal_slate';
 
 export interface FinancialLineItem {
-  readonly id: string;
-  readonly label: string;
-  readonly values: Record<string, number | null>;
-  readonly isSubtotal?: boolean;
-  readonly isMajorTotal?: boolean;
-  readonly isNetIncome?: boolean;
-  readonly indentLevel?: number; // 0, 1, 2
-  readonly note?: string;
+  id: string;
+  label: string;
+  values: Record<string, number | null>;
+  isSubtotal?: boolean;
+  isMajorTotal?: boolean;
+  isNetIncome?: boolean;
+  indentLevel?: number; // 0, 1, 2
+  note?: string;
 }
 
 export interface FinancialSubSection {
-  readonly id: string;
-  readonly title: string;
-  readonly items: readonly FinancialLineItem[];
-  readonly subtotal?: FinancialLineItem;
+  id: string;
+  title: string;
+  items: FinancialLineItem[];
+  subtotal?: FinancialLineItem;
 }
 
 export interface FinancialSection {
-  readonly id: string;
-  readonly title: string;
-  readonly subSections?: readonly FinancialSubSection[];
-  readonly items?: readonly FinancialLineItem[];
-  readonly subtotal?: FinancialLineItem;
+  id: string;
+  title: string;
+  subSections?: FinancialSubSection[];
+  items?: FinancialLineItem[];
+  subtotal?: FinancialLineItem;
 }
 
 export interface FinancialStatementData {
@@ -45,10 +49,10 @@ export interface FinancialStatementData {
   preparedDate: string;
   startYear: string;
   endYear: string;
-  periods: readonly string[];
+  periods: string[];
   currencySymbol: string;
-  sections: readonly FinancialSection[];
-  bottomLines?: readonly FinancialLineItem[];
+  sections: FinancialSection[];
+  bottomLines?: FinancialLineItem[];
 }
 
 export const defaultPnlStatementData: FinancialStatementData = {
@@ -267,26 +271,178 @@ export const defaultPnlStatementData: FinancialStatementData = {
   ],
 };
 
+/**
+ * Intelligent generator: converts real table rows into a structured Financial Statement
+ */
+export function buildStatementFromActualRows(
+  rows: readonly Record<string, unknown>[],
+  tableName?: string,
+  sourceName?: string,
+): FinancialStatementData {
+  if (!rows || rows.length === 0) {
+    return {
+      companyName: sourceName ? `Empresa: ${sourceName}` : 'Mi Empresa',
+      address: 'Sede Principal • Departamento de Contabilidad',
+      phone: 'Informe Contable Consolidado',
+      reportTitle: tableName ? tableName.toUpperCase() : 'ESTADO FINANCIERO',
+      preparedDate: new Date().toLocaleDateString('es-ES'),
+      startYear: '2026',
+      endYear: '2026',
+      periods: ['Saldo Actual'],
+      currencySymbol: '$',
+      sections: [
+        {
+          id: 'sec-1',
+          title: '1. ACTIVOS',
+          items: [
+            {
+              id: 'row-1',
+              label: '11 - Activo Corriente / Disponible',
+              values: { 'Saldo Actual': 0 },
+              indentLevel: 1,
+            },
+          ],
+          subtotal: {
+            id: 'sub-1',
+            label: 'TOTAL ACTIVOS',
+            values: { 'Saldo Actual': 0 },
+            isMajorTotal: true,
+          },
+        },
+      ],
+    };
+  }
+
+  // Detect fields
+  const sample = rows[0] || {};
+  const keys = Object.keys(sample);
+
+  const codeKey = keys.find((k) => /c[oó]digo|code/i.test(k));
+  const nameKey = keys.find((k) => /nombre|cuenta|glosa|descrip|concepto/i.test(k) && !/tipo|subtipo/i.test(k));
+  const balanceKey = keys.find((k) => /balance_acumulado|saldo_final|saldo|balance|monto|total|haber_acumulado|debe_acumulado/i.test(k));
+  const levelKey = keys.find((k) => /nivel|level/i.test(k));
+
+  // If no accounting code found, create a simple dynamic category breakdown
+  if (!codeKey && !nameKey) {
+    return defaultPnlStatementData;
+  }
+
+  // Group real rows by root code or accounting class
+  const sectionMap = new Map<string, { title: string; items: FinancialLineItem[] }>();
+
+  rows.forEach((row, idx) => {
+    const rawCode = codeKey ? String(row[codeKey] ?? '').trim() : '';
+    const rawName = nameKey ? String(row[nameKey] ?? '').trim() : `Cuenta ${idx + 1}`;
+    const rawVal = balanceKey && row[balanceKey] !== undefined ? Number(row[balanceKey]) : 0;
+    const numVal = isNaN(rawVal) ? 0 : rawVal;
+
+    // Determine root classification
+    const rootChar = rawCode.charAt(0) || '1';
+    let secTitle = '1. ACTIVOS';
+    if (rootChar === '2') secTitle = '2. PASIVOS';
+    else if (rootChar === '3') secTitle = '3. PATRIMONIO NETO';
+    else if (rootChar === '4') secTitle = '4. INGRESOS';
+    else if (rootChar === '5') secTitle = '5. COSTOS';
+    else if (rootChar === '6') secTitle = '6. GASTOS OPERATIVOS';
+    else if (!/^\d/.test(rootChar)) secTitle = 'CUENTAS GENERALES';
+
+    if (!sectionMap.has(secTitle)) {
+      sectionMap.set(secTitle, { title: secTitle, items: [] });
+    }
+
+    const rawLevel = levelKey && row[levelKey] !== undefined ? Number(row[levelKey]) : 1;
+    const indentLevel = Math.max(0, Math.min(2, isNaN(rawLevel) ? (rawCode.length > 2 ? 1 : 0) : rawLevel - 1));
+
+    sectionMap.get(secTitle)?.items.push({
+      id: `row-${idx}-${rawCode}`,
+      label: rawCode ? `${rawCode} - ${rawName}` : rawName,
+      values: { 'Saldo Registrado': numVal },
+      indentLevel,
+    });
+  });
+
+  const sections: FinancialSection[] = [];
+  sectionMap.forEach((val, secTitle) => {
+    const totalSum = val.items.reduce((acc, it) => acc + (it.values['Saldo Registrado'] || 0), 0);
+    sections.push({
+      id: `sec-${secTitle.replace(/\s+/g, '-').toLowerCase()}`,
+      title: secTitle,
+      items: val.items,
+      subtotal: {
+        id: `sub-${secTitle.replace(/\s+/g, '-').toLowerCase()}`,
+        label: `TOTAL ${secTitle}`,
+        values: { 'Saldo Registrado': totalSum },
+        isMajorTotal: true,
+      },
+    });
+  });
+
+  return {
+    companyName: sourceName ? `${sourceName}` : 'Empresa / Negocio Local',
+    address: 'Plan Contable Consolidado',
+    phone: `Datos de ${tableName || 'Tabla'} (${rows.length} registros)`,
+    reportTitle: tableName ? tableName.toUpperCase() : 'BALANCE GENERAL Y ESTADOS FINANCIEROS',
+    preparedDate: new Date().toLocaleDateString('es-ES'),
+    startYear: '2026',
+    endYear: '2026',
+    periods: ['Saldo Registrado'],
+    currencySymbol: '$',
+    sections,
+  };
+}
+
 interface FinancialStatementCardProps {
   readonly initialData?: FinancialStatementData;
   readonly isCompact?: boolean;
   readonly isDarkMode?: boolean;
   readonly onDataChange?: (data: FinancialStatementData) => void;
+  readonly rows?: readonly Record<string, unknown>[];
+  readonly tableName?: string;
+  readonly sourceName?: string;
 }
 
 export function FinancialStatementCard({
-  initialData = defaultPnlStatementData,
+  initialData,
   isCompact = false,
   isDarkMode = false,
   onDataChange,
+  rows,
+  tableName,
+  sourceName,
 }: FinancialStatementCardProps) {
-  const [data, setData] = useState<FinancialStatementData>(initialData);
+  // Initialize from actual rows if provided, or from initialData, or default
+  const [data, setData] = useState<FinancialStatementData>(() => {
+    if (initialData) return initialData;
+    if (rows && rows.length > 0) {
+      return buildStatementFromActualRows(rows, tableName, sourceName);
+    }
+    return defaultPnlStatementData;
+  });
+
+  // Re-sync if rows or tableName change
+  useEffect(() => {
+    if (rows && rows.length > 0 && !initialData) {
+      const generated = buildStatementFromActualRows(rows, tableName, sourceName);
+      setData(generated);
+      onDataChange?.(generated);
+    }
+  }, [rows, tableName, sourceName, initialData, onDataChange]);
+
   const [selectedTheme, setSelectedTheme] = useState<FinancialTheme>(
     isDarkMode ? 'corporate_navy' : 'classic_blue',
   );
-  const [currencySymbol, setCurrencySymbol] = useState<string>(initialData.currencySymbol || '$');
-  const [isEditingMetadata, setIsEditingMetadata] = useState(false);
+  const [currencySymbol, setCurrencySymbol] = useState<string>(data.currencySymbol || '$');
+  const [isAuthoringMode, setIsAuthoringMode] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  // Section / Row addition modal state
+  const [newRowDraft, setNewRowDraft] = useState<{
+    sectionId: string;
+    label: string;
+    amount: string;
+    indentLevel: number;
+    isSubtotal: boolean;
+  } | null>(null);
 
   const toggleSection = (secId: string) => {
     setCollapsedSections((prev) => ({ ...prev, [secId]: !prev[secId] }));
@@ -312,35 +468,233 @@ export function FinancialStatementCard({
     return isNeg ? `(${formatted})` : formatted;
   };
 
+  // ==========================================
+  // AUTHORING: Add Section, Add Row, Delete Row
+  // ==========================================
+  const handleAddNewSection = () => {
+    const title = window.prompt('Nombre de la nueva sección (ej: GASTOS DE OPERACIÓN):');
+    if (!title || !title.trim()) return;
+
+    setData((prev) => {
+      const newSec: FinancialSection = {
+        id: `sec-${Date.now()}`,
+        title: title.trim().toUpperCase(),
+        items: [
+          {
+            id: `item-${Date.now()}-1`,
+            label: 'Nueva fila de cuenta / concepto',
+            values: prev.periods.reduce((acc, p) => ({ ...acc, [p]: 0 }), {}),
+            indentLevel: 1,
+          },
+        ],
+        subtotal: {
+          id: `sub-${Date.now()}`,
+          label: `TOTAL ${title.trim().toUpperCase()}`,
+          values: prev.periods.reduce((acc, p) => ({ ...acc, [p]: 0 }), {}),
+          isMajorTotal: true,
+        },
+      };
+
+      const next = { ...prev, sections: [...prev.sections, newSec] };
+      onDataChange?.(next);
+      return next;
+    });
+  };
+
+  const handleDeleteSection = (secId: string) => {
+    setData((prev) => {
+      const next = {
+        ...prev,
+        sections: prev.sections.filter((s) => s.id !== secId),
+      };
+      onDataChange?.(next);
+      return next;
+    });
+  };
+
+  const handleOpenAddRowModal = (sectionId: string) => {
+    setNewRowDraft({
+      sectionId,
+      label: '',
+      amount: '',
+      indentLevel: 1,
+      isSubtotal: false,
+    });
+  };
+
+  const handleConfirmAddRow = () => {
+    if (!newRowDraft || !newRowDraft.label.trim()) return;
+
+    setData((prev) => {
+      const numAmount = Number(newRowDraft.amount) || 0;
+      const newItem: FinancialLineItem = {
+        id: `row-${Date.now()}`,
+        label: newRowDraft.label.trim(),
+        values: prev.periods.reduce((acc, p) => ({ ...acc, [p]: numAmount }), {}),
+        indentLevel: newRowDraft.indentLevel,
+        isSubtotal: newRowDraft.isSubtotal,
+      };
+
+      const nextSections = prev.sections.map((sec) => {
+        if (sec.id === newRowDraft.sectionId) {
+          const currentItems = sec.items || [];
+          const updatedItems = [...currentItems, newItem];
+          // Recalculate subtotal
+          const updatedSubtotal = sec.subtotal
+            ? {
+                ...sec.subtotal,
+                values: prev.periods.reduce((acc, p) => {
+                  const sum = updatedItems.reduce((s, it) => s + (it.values[p] || 0), 0);
+                  return { ...acc, [p]: sum };
+                }, {}),
+              }
+            : undefined;
+
+          return { ...sec, items: updatedItems, subtotal: updatedSubtotal };
+        }
+        return sec;
+      });
+
+      const next = { ...prev, sections: nextSections };
+      onDataChange?.(next);
+      return next;
+    });
+
+    setNewRowDraft(null);
+  };
+
+  const handleDeleteItem = (sectionId: string, itemId: string) => {
+    setData((prev) => {
+      const nextSections = prev.sections.map((sec) => {
+        if (sec.id === sectionId) {
+          const nextItems = (sec.items || []).filter((it) => it.id !== itemId);
+          // Recalculate subtotal
+          const updatedSubtotal = sec.subtotal
+            ? {
+                ...sec.subtotal,
+                values: prev.periods.reduce((acc, p) => {
+                  const sum = nextItems.reduce((s, it) => s + (it.values[p] || 0), 0);
+                  return { ...acc, [p]: sum };
+                }, {}),
+              }
+            : undefined;
+          return { ...sec, items: nextItems, subtotal: updatedSubtotal };
+        }
+        return sec;
+      });
+
+      const next = { ...prev, sections: nextSections };
+      onDataChange?.(next);
+      return next;
+    });
+  };
+
+  const handleCellValChange = (
+    sectionId: string,
+    itemId: string,
+    period: string,
+    newVal: number,
+  ) => {
+    setData((prev) => {
+      const nextSections = prev.sections.map((sec) => {
+        if (sec.id === sectionId) {
+          const updatedItems = (sec.items || []).map((it) => {
+            if (it.id === itemId) {
+              return { ...it, values: { ...it.values, [period]: newVal } };
+            }
+            return it;
+          });
+
+          const updatedSubtotal = sec.subtotal
+            ? {
+                ...sec.subtotal,
+                values: prev.periods.reduce((acc, p) => {
+                  const sum = updatedItems.reduce((s, it) => s + (it.values[p] || 0), 0);
+                  return { ...acc, [p]: sum };
+                }, {}),
+              }
+            : undefined;
+
+          return { ...sec, items: updatedItems, subtotal: updatedSubtotal };
+        }
+        return sec;
+      });
+
+      const next = { ...prev, sections: nextSections };
+      onDataChange?.(next);
+      return next;
+    });
+  };
+
+  const handleItemLabelChange = (
+    sectionId: string,
+    itemId: string,
+    newLabel: string,
+  ) => {
+    setData((prev) => {
+      const nextSections = prev.sections.map((sec) => {
+        if (sec.id === sectionId) {
+          const updatedItems = (sec.items || []).map((it) => {
+            if (it.id === itemId) {
+              return { ...it, label: newLabel };
+            }
+            return it;
+          });
+          return { ...sec, items: updatedItems };
+        }
+        return sec;
+      });
+      const next = { ...prev, sections: nextSections };
+      onDataChange?.(next);
+      return next;
+    });
+  };
+
+  const handleAddPeriod = () => {
+    const newPeriod = window.prompt('Nombre del nuevo período o año (ej: 2027, Octubre 2026):');
+    if (!newPeriod || !newPeriod.trim()) return;
+
+    setData((prev) => {
+      const p = newPeriod.trim();
+      if (prev.periods.includes(p)) return prev;
+
+      const nextPeriods = [...prev.periods, p];
+      const next = { ...prev, periods: nextPeriods };
+      onDataChange?.(next);
+      return next;
+    });
+  };
+
+  const handleResetToRealData = () => {
+    if (rows && rows.length > 0) {
+      const generated = buildStatementFromActualRows(rows, tableName, sourceName);
+      setData(generated);
+      onDataChange?.(generated);
+    } else {
+      setData(defaultPnlStatementData);
+      onDataChange?.(defaultPnlStatementData);
+    }
+  };
+
+
   // Export to CSV
   const handleExportCsv = () => {
     const headers = ['Concepto', ...data.periods];
-    const rows: string[] = [headers.join(',')];
+    const rowsList: string[] = [headers.join(',')];
 
     data.sections.forEach((sec) => {
-      rows.push(`"${sec.title}",${data.periods.map(() => '').join(',')}`);
+      rowsList.push(`"${sec.title}",${data.periods.map(() => '').join(',')}`);
       sec.items?.forEach((item) => {
         const vals = data.periods.map((p) => item.values[p] ?? 0);
-        rows.push(`"${item.label}",${vals.join(',')}`);
-      });
-      sec.subSections?.forEach((sub) => {
-        rows.push(`"  ${sub.title}",${data.periods.map(() => '').join(',')}`);
-        sub.items.forEach((item) => {
-          const vals = data.periods.map((p) => item.values[p] ?? 0);
-          rows.push(`"    ${item.label}",${vals.join(',')}`);
-        });
-        if (sub.subtotal) {
-          const vals = data.periods.map((p) => sub.subtotal?.values[p] ?? 0);
-          rows.push(`"  ${sub.subtotal.label}",${vals.join(',')}`);
-        }
+        rowsList.push(`"${item.label}",${vals.join(',')}`);
       });
       if (sec.subtotal) {
         const vals = data.periods.map((p) => sec.subtotal?.values[p] ?? 0);
-        rows.push(`"${sec.subtotal.label}",${vals.join(',')}`);
+        rowsList.push(`"${sec.subtotal.label}",${vals.join(',')}`);
       }
     });
 
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([rowsList.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -397,7 +751,7 @@ export function FinancialStatementCard({
     <div className="w-full flex flex-col space-y-4 font-sans select-text">
       {/* Interactive Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-surface-border no-print">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-bold uppercase tracking-wider text-muted">
             Paleta:
           </span>
@@ -412,7 +766,7 @@ export function FinancialStatementCard({
             <option value="minimal_slate">Minimalista Neutro</option>
           </select>
 
-          <span className="text-[11px] font-bold uppercase tracking-wider text-muted ml-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-muted ml-1">
             Moneda:
           </span>
           <select
@@ -428,18 +782,50 @@ export function FinancialStatementCard({
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Authoring Mode Toggle Button */}
           <button
-            onClick={() => setIsEditingMetadata((prev) => !prev)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-semibold transition-all ${
-              isEditingMetadata
-                ? 'border-primary bg-primary text-white shadow-xs'
+            onClick={() => setIsAuthoringMode((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-bold transition-all shadow-xs ${
+              isAuthoringMode
+                ? 'border-primary bg-primary text-white shadow-primary/20'
                 : 'border-surface-border bg-surface text-foreground hover:bg-surface-subtle'
             }`}
           >
             <Edit2 className="h-3.5 w-3.5" />
-            <span>{isEditingMetadata ? 'Listo' : 'Personalizar Encabezado'}</span>
+            <span>{isAuthoringMode ? 'Terminar Edición' : 'Editar Filas & Estructura'}</span>
           </button>
+
+          {isAuthoringMode && (
+            <>
+              <button
+                onClick={handleAddNewSection}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface border border-surface-border text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
+              >
+                <Plus className="h-3.5 w-3.5 text-primary" />
+                <span>+ Sección</span>
+              </button>
+
+              <button
+                onClick={handleAddPeriod}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface border border-surface-border text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
+              >
+                <Plus className="h-3.5 w-3.5 text-accent" />
+                <span>+ Período</span>
+              </button>
+
+              {rows && rows.length > 0 && (
+                <button
+                  onClick={handleResetToRealData}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-surface-border bg-surface text-xs text-muted hover:text-foreground transition-all"
+                  title="Recalcular desde las filas de la tabla seleccionada"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  <span>Restablecer</span>
+                </button>
+              )}
+            </>
+          )}
 
           <button
             onClick={handleExportCsv}
@@ -461,14 +847,18 @@ export function FinancialStatementCard({
         </div>
       </div>
 
-      {/* Financial Statement Sheet Container (Pixel-Perfect from Image 2) */}
-      <div className={`bg-white dark:bg-slate-950 ${isCompact ? 'p-3.5 space-y-4' : 'p-6 md:p-8 space-y-6'} rounded-2xl border border-slate-300 dark:border-slate-800 shadow-sm overflow-x-auto`}>
+      {/* Financial Statement Sheet Container */}
+      <div
+        className={`bg-white dark:bg-slate-950 ${
+          isCompact ? 'p-3.5 space-y-4' : 'p-6 md:p-8 space-y-6'
+        } rounded-2xl border border-slate-300 dark:border-slate-800 shadow-sm overflow-x-auto`}
+      >
         {/* Executive Header Section */}
         <div className="space-y-4">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             {/* Left: Report Title & Company Details */}
             <div className="space-y-1.5 flex-1 min-w-0">
-              {isEditingMetadata ? (
+              {isAuthoringMode ? (
                 <div className="space-y-2">
                   <input
                     type="text"
@@ -488,14 +878,14 @@ export function FinancialStatementCard({
                     type="text"
                     value={data.address}
                     onChange={(e) => handleMetadataChange('address', e.target.value)}
-                    placeholder="Dirección..."
+                    placeholder="Dirección o descripción..."
                     className="w-full px-2 py-1 rounded border border-surface-border bg-surface text-xs text-muted focus:ring-1 focus:ring-primary focus:outline-none"
                   />
                   <input
                     type="text"
                     value={data.phone}
                     onChange={(e) => handleMetadataChange('phone', e.target.value)}
-                    placeholder="Teléfono..."
+                    placeholder="Teléfono o metadata..."
                     className="w-full px-2 py-1 rounded border border-surface-border bg-surface text-xs text-muted focus:ring-1 focus:ring-primary focus:outline-none"
                   />
                 </div>
@@ -516,16 +906,16 @@ export function FinancialStatementCard({
             {/* Right: Accounting Metadata Box */}
             <div className="shrink-0 flex flex-col items-end">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-1.5">
-                GANANCIAS Y PÉRDIDAS ANUALES
+                ESTRUCTURA CONTABLE
               </h3>
               <table className="text-xs border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden">
                 <tbody>
                   <tr className="border-b border-slate-300 dark:border-slate-700">
                     <td className="px-3 py-1 bg-slate-100 dark:bg-slate-800/80 font-bold text-muted text-[10px] uppercase">
-                      FECHA DE PREPARACIÓN
+                      FECHA DE CORTE
                     </td>
                     <td className="px-3 py-1 font-mono text-right font-medium">
-                      {isEditingMetadata ? (
+                      {isAuthoringMode ? (
                         <input
                           type="text"
                           value={data.preparedDate}
@@ -539,10 +929,10 @@ export function FinancialStatementCard({
                   </tr>
                   <tr className="border-b border-slate-300 dark:border-slate-700">
                     <td className="px-3 py-1 bg-slate-100 dark:bg-slate-800/80 font-bold text-muted text-[10px] uppercase">
-                      AÑO DE INICIO
+                      INICIO
                     </td>
                     <td className="px-3 py-1 font-mono text-right font-medium">
-                      {isEditingMetadata ? (
+                      {isAuthoringMode ? (
                         <input
                           type="text"
                           value={data.startYear}
@@ -556,10 +946,10 @@ export function FinancialStatementCard({
                   </tr>
                   <tr>
                     <td className="px-3 py-1 bg-slate-100 dark:bg-slate-800/80 font-bold text-muted text-[10px] uppercase">
-                      AÑO DE FINALIZACIÓN
+                      CIERRE
                     </td>
                     <td className="px-3 py-1 font-mono text-right font-medium">
-                      {isEditingMetadata ? (
+                      {isAuthoringMode ? (
                         <input
                           type="text"
                           value={data.endYear}
@@ -583,7 +973,7 @@ export function FinancialStatementCard({
             <thead>
               <tr className="border-b-2 border-slate-400 dark:border-slate-600">
                 <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-muted w-1/3">
-                  Concepto
+                  Concepto / Cuenta
                 </th>
                 {data.periods.map((period) => (
                   <th
@@ -593,6 +983,7 @@ export function FinancialStatementCard({
                     {period}
                   </th>
                 ))}
+                {isAuthoringMode && <th className="py-2 px-2 text-right w-16">Acción</th>}
               </tr>
             </thead>
 
@@ -602,24 +993,46 @@ export function FinancialStatementCard({
 
                 return (
                   <tbody key={section.id} className="border-b border-slate-200 dark:border-slate-800">
-                    {/* Section Shaded Banner (Image 2 style) */}
-                    <tr
-                      onClick={() => toggleSection(section.id)}
-                      className={`cursor-pointer transition-colors ${themeClasses.sectionBg}`}
-                    >
-                      <td className="py-2 px-3 font-extrabold uppercase tracking-wide flex items-center gap-1.5">
-                        {isCollapsed ? (
-                          <ChevronRight className="h-3.5 w-3.5 text-muted" />
-                        ) : (
-                          <ChevronDown className="h-3.5 w-3.5 text-muted" />
-                        )}
-                        <span>{section.title}</span>
+                    {/* Section Shaded Banner */}
+                    <tr className={`transition-colors ${themeClasses.sectionBg}`}>
+                      <td
+                        onClick={() => toggleSection(section.id)}
+                        className="py-2 px-3 font-extrabold uppercase tracking-wide flex items-center justify-between cursor-pointer select-none"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {isCollapsed ? (
+                            <ChevronRight className="h-3.5 w-3.5 text-muted" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5 text-muted" />
+                          )}
+                          <span>{section.title}</span>
+                        </div>
                       </td>
                       {data.periods.map((period) => (
                         <td key={period} className="py-2 px-3 text-right font-mono font-bold">
                           {period}
                         </td>
                       ))}
+                      {isAuthoringMode && (
+                        <td className="py-1 px-2 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleOpenAddRowModal(section.id)}
+                              className="p-1 rounded hover:bg-black/10 text-primary font-bold"
+                              title="Añadir fila a esta sección"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSection(section.id)}
+                              className="p-1 rounded hover:bg-danger/20 text-danger"
+                              title="Eliminar sección"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
 
                     {!isCollapsed && (
@@ -645,8 +1058,19 @@ export function FinancialStatementCard({
                                   : 'font-medium'
                               } ${item.isSubtotal || item.isMajorTotal ? 'font-bold' : ''}`}
                             >
-                              <span>{item.label}</span>
-                              {item.note && (
+                              {isAuthoringMode ? (
+                                <input
+                                  type="text"
+                                  value={item.label}
+                                  onChange={(e) =>
+                                    handleItemLabelChange(section.id, item.id, e.target.value)
+                                  }
+                                  className="w-full px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              ) : (
+                                <span>{item.label}</span>
+                              )}
+                              {item.note && !isAuthoringMode && (
                                 <span className="text-[10px] text-muted italic ml-1.5">
                                   {item.note}
                                 </span>
@@ -661,12 +1085,41 @@ export function FinancialStatementCard({
                                     : 'font-normal'
                                 }`}
                               >
-                                <span className="text-muted/60 text-[10px] mr-1.5">
-                                  {currencySymbol}
-                                </span>
-                                <span>{formatFinancialNumber(item.values[period])}</span>
+                                {isAuthoringMode ? (
+                                  <input
+                                    type="number"
+                                    value={item.values[period] ?? 0}
+                                    onChange={(e) =>
+                                      handleCellValChange(
+                                        section.id,
+                                        item.id,
+                                        period,
+                                        Number(e.target.value),
+                                      )
+                                    }
+                                    className="w-24 px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                                  />
+                                ) : (
+                                  <>
+                                    <span className="text-muted/60 text-[10px] mr-1.5">
+                                      {currencySymbol}
+                                    </span>
+                                    <span>{formatFinancialNumber(item.values[period])}</span>
+                                  </>
+                                )}
                               </td>
                             ))}
+                            {isAuthoringMode && (
+                              <td className="py-1 px-2 text-right">
+                                <button
+                                  onClick={() => handleDeleteItem(section.id, item.id)}
+                                  className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+                                  title="Eliminar fila"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         ))}
 
@@ -675,7 +1128,7 @@ export function FinancialStatementCard({
                           <tbody key={sub.id}>
                             <tr className="bg-slate-50/80 dark:bg-slate-900/60 font-bold border-b border-slate-200 dark:border-slate-800">
                               <td
-                                colSpan={data.periods.length + 1}
+                                colSpan={data.periods.length + (isAuthoringMode ? 2 : 1)}
                                 className="py-1.5 px-3 text-[11px] font-black uppercase tracking-wider text-muted pl-5"
                               >
                                 {sub.title}
@@ -689,11 +1142,6 @@ export function FinancialStatementCard({
                               >
                                 <td className="py-1.5 px-3 pl-8 text-foreground">
                                   <span>{item.label}</span>
-                                  {item.note && (
-                                    <span className="text-[10px] text-muted italic ml-1">
-                                      {item.note}
-                                    </span>
-                                  )}
                                 </td>
                                 {data.periods.map((period) => (
                                   <td
@@ -706,6 +1154,7 @@ export function FinancialStatementCard({
                                     <span>{formatFinancialNumber(item.values[period])}</span>
                                   </td>
                                 ))}
+                                {isAuthoringMode && <td />}
                               </tr>
                             ))}
 
@@ -727,6 +1176,7 @@ export function FinancialStatementCard({
                                     <span>{formatFinancialNumber(sub.subtotal?.values[period])}</span>
                                   </td>
                                 ))}
+                                {isAuthoringMode && <td />}
                               </tr>
                             )}
                           </tbody>
@@ -757,6 +1207,7 @@ export function FinancialStatementCard({
                                 <span>{formatFinancialNumber(section.subtotal?.values[period])}</span>
                               </td>
                             ))}
+                            {isAuthoringMode && <td />}
                           </tr>
                         )}
                       </>
@@ -767,6 +1218,94 @@ export function FinancialStatementCard({
             </tbody>
           </table>
         </div>
+
+        {/* Modal for adding a custom row */}
+        {newRowDraft && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="bg-surface border border-surface-border p-5 rounded-2xl max-w-sm w-full space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-foreground">+ Añadir Fila Personalizada</h3>
+                <button
+                  onClick={() => setNewRowDraft(null)}
+                  className="p-1 rounded text-muted hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-muted font-bold mb-1">Concepto / Nombre:</label>
+                  <input
+                    type="text"
+                    value={newRowDraft.label}
+                    onChange={(e) =>
+                      setNewRowDraft({ ...newRowDraft, label: e.target.value })
+                    }
+                    placeholder="Ej: Ventas por Canal Digital"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-surface-border bg-surface-subtle text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-muted font-bold mb-1">Monto Inicial:</label>
+                  <input
+                    type="number"
+                    value={newRowDraft.amount}
+                    onChange={(e) =>
+                      setNewRowDraft({ ...newRowDraft, amount: e.target.value })
+                    }
+                    placeholder="0.00"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-surface-border bg-surface-subtle text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-muted font-bold mb-1">Nivel de Sangría:</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { val: 0, label: 'Principal (0)' },
+                      { val: 1, label: 'Subcuenta (1)' },
+                      { val: 2, label: 'Detalle (2)' },
+                    ].map((lvl) => (
+                      <button
+                        key={lvl.val}
+                        type="button"
+                        onClick={() =>
+                          setNewRowDraft({ ...newRowDraft, indentLevel: lvl.val })
+                        }
+                        className={`py-1 rounded-lg border text-xs font-semibold ${
+                          newRowDraft.indentLevel === lvl.val
+                            ? 'bg-primary text-white border-primary'
+                            : 'border-surface-border bg-surface hover:bg-surface-subtle'
+                        }`}
+                      >
+                        {lvl.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-surface-border">
+                <button
+                  onClick={() => setNewRowDraft(null)}
+                  className="px-3 py-1.5 text-xs text-muted hover:text-foreground font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmAddRow}
+                  disabled={!newRowDraft.label.trim()}
+                  className="px-4 py-1.5 text-xs bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary-hover disabled:opacity-50 shadow-sm"
+                >
+                  Insertar Fila
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
