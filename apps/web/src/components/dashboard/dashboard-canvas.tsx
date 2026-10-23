@@ -120,7 +120,7 @@ interface DashboardCanvasProps {
   readonly onEnsureDemoSource?: () => void;
 }
 
-const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v8';
+const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v9';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -544,6 +544,18 @@ export function DashboardCanvas({
       return [...newItems, ...prevCards];
     });
   }, [dynamicCards]);
+
+  // Cleanup legacy pre-populated cards from localStorage to ensure clean canvas
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('proyecto_bi_dashboard_cards_v8');
+        localStorage.removeItem('proyecto_bi_dashboard_cards_v7');
+      } catch {
+        // Ignore
+      }
+    }
+  }, []);
 
   // Persist cards layout and edits
   useEffect(() => {
