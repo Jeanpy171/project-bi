@@ -21,6 +21,8 @@ describe('API Server Integration Tests', () => {
     expect(spec.paths['/api/connections/test']).toBeDefined();
     expect(spec.paths['/api/queries/run']).toBeDefined();
     expect(spec.paths['/api/queries/compile']).toBeDefined();
+    expect(spec.paths['/api/ai/ollama/models']).toBeDefined();
+    expect(spec.paths['/api/ai/ask']).toBeDefined();
   });
 
   it('POST /api/queries/compile should transform Query IR to Postgres SQL', async () => {
@@ -80,5 +82,15 @@ describe('API Server Integration Tests', () => {
     const body = await res.json() as { error: { code: string; message: string } };
     expect(body.error.code).toBe('SECURITY_VIOLATION');
     expect(body.error.message).toContain('Solo se permiten consultas de lectura');
+  });
+
+  it('POST /api/ai/ask should reject requests with invalid schemas', async () => {
+    const res = await app.request('/api/ai/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invalid: 'payload' }),
+    });
+
+    expect(res.status).toBe(400);
   });
 });

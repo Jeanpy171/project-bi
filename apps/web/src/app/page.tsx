@@ -9,6 +9,7 @@ import { VisualBuilderView } from '../components/views/visual-builder-view';
 import { ConnectionsView } from '../components/views/connections-view';
 import { DiagnosticModal } from '../components/connections/diagnostic-modal';
 import { ExcelUploadModal } from '../components/connections/excel-upload-modal';
+import { AICopilotModal } from '../components/ai/ai-copilot-modal';
 import {
   demoPostgresSource,
   introspectPostgresDataSource,
@@ -41,6 +42,7 @@ export default function HomePage() {
 
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+  const [isAICopilotOpen, setIsAICopilotOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Synchronize view and context from URL on initial load and handle browser back/forward
@@ -210,6 +212,7 @@ export default function HomePage() {
         onToggleDarkMode={toggleDarkMode}
         onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
         onOpenUploadExcel={() => setIsExcelModalOpen(true)}
+        onOpenAICopilot={() => setIsAICopilotOpen(true)}
         activeSourcesCount={dataSources.length}
       />
 
@@ -225,6 +228,7 @@ export default function HomePage() {
             isDarkMode={isDarkMode}
             onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
             onOpenUploadExcel={() => setIsExcelModalOpen(true)}
+            onOpenAICopilot={() => setIsAICopilotOpen(true)}
             onEnsureDemoSource={handleEnsureDemoSource}
             dataSources={dataSources}
           />
@@ -275,6 +279,15 @@ export default function HomePage() {
         isOpen={isExcelModalOpen}
         onClose={() => setIsExcelModalOpen(false)}
         onSourceAdded={handleSourceAdded}
+      />
+
+      {/* AI Copilot Modal (Ollama local & Google Gemini) */}
+      <AICopilotModal
+        isOpen={isAICopilotOpen}
+        onClose={() => setIsAICopilotOpen(false)}
+        dataSources={dataSources}
+        activeSourceId={builderContext.sourceId}
+        onInsertCardToDashboard={handleSaveCardToDashboard}
       />
     </div>
   );

@@ -26,6 +26,7 @@ interface SidebarProps {
   readonly onToggleDarkMode: () => void;
   readonly onOpenConnectionModal: () => void;
   readonly onOpenUploadExcel: () => void;
+  readonly onOpenAICopilot: () => void;
   readonly activeSourcesCount: number;
 }
 
@@ -36,6 +37,7 @@ export function Sidebar({
   onToggleDarkMode,
   onOpenConnectionModal,
   onOpenUploadExcel,
+  onOpenAICopilot,
   activeSourcesCount,
 }: SidebarProps) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
@@ -117,6 +119,20 @@ export function Sidebar({
                 <div>
                   <span className="block font-semibold">Dashboard</span>
                   <span className="text-[10px] text-muted block">Nuevo lienzo ejecutivo</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsNewMenuOpen(false);
+                  onOpenAICopilot();
+                }}
+                className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs text-foreground font-medium hover:bg-surface-subtle transition-colors text-left"
+              >
+                <Sparkles className="h-4 w-4 text-primary" />
+                <div>
+                  <span className="block font-semibold">Preguntar a IA</span>
+                  <span className="text-[10px] text-muted block">Copiloto Ollama & Gemini</span>
                 </div>
               </button>
 
@@ -217,11 +233,16 @@ export function Sidebar({
             Inteligencia
           </span>
           <button
-            onClick={() => onViewChange('builder')}
-            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-foreground/80 hover:bg-surface-subtle transition-all"
+            onClick={onOpenAICopilot}
+            className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-foreground/90 hover:bg-primary/10 hover:text-primary transition-all group border border-transparent hover:border-primary/20"
           >
-            <Sparkles className="h-4 w-4 text-accent" />
-            <span>Consultas asistidas</span>
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
+              <span className="font-semibold text-xs">Copiloto IA</span>
+            </div>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-primary/15 text-primary border border-primary/25">
+              Ollama / Cloud
+            </span>
           </button>
         </div>
       </div>

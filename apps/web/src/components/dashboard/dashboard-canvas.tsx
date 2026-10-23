@@ -125,6 +125,7 @@ interface DashboardCanvasProps {
   readonly isDarkMode: boolean;
   readonly onOpenConnectionModal?: () => void;
   readonly onOpenUploadExcel?: () => void;
+  readonly onOpenAICopilot?: () => void;
   readonly onEnsureDemoSource?: () => void;
   readonly dataSources?: readonly DataSource[];
 }
@@ -264,6 +265,7 @@ export function DashboardCanvas({
   isDarkMode,
   onOpenConnectionModal,
   onOpenUploadExcel,
+  onOpenAICopilot,
   onEnsureDemoSource,
   dataSources = [],
 }: DashboardCanvasProps) {
@@ -1015,6 +1017,17 @@ export function DashboardCanvas({
               <Plus className="h-4 w-4" />
               <span>+ Añadir Pregunta</span>
             </button>
+
+            {onOpenAICopilot && (
+              <button
+                onClick={onOpenAICopilot}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-primary/30 bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                title="Generar gráficos y consultar tus datos con IA (Ollama local o Gemini)"
+              >
+                <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                <span>Copiloto IA</span>
+              </button>
+            )}
 
             <button
               onClick={() => setIsShareModalOpen(true)}

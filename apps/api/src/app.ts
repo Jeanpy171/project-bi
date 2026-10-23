@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { healthRoute } from './routes/health.js';
 import { connectionsRoute } from './routes/connections.js';
 import { queriesRoute } from './routes/queries.js';
+import { aiRoute } from './routes/ai.js';
 
 export const app = new OpenAPIHono();
 
@@ -30,6 +31,7 @@ app.onError((err, c) => {
 app.route('/', healthRoute);
 app.route('/', connectionsRoute);
 app.route('/', queriesRoute);
+app.route('/', aiRoute);
 
 // OpenAPI Specification Route
 app.doc('/doc', {
