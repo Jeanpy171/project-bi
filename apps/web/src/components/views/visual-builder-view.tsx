@@ -463,9 +463,9 @@ export function VisualBuilderView({
   );
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden bg-background">
+    <div className="flex h-[calc(100vh-3.5rem)] w-full min-w-0 overflow-hidden bg-background relative">
       {/* Left Configuration Drawer */}
-      <div className="w-88 border-r border-surface-border bg-surface flex flex-col p-5 gap-5 shrink-0 overflow-y-auto">
+      <div className="w-76 lg:w-80 border-r border-surface-border bg-surface flex flex-col p-4 lg:p-5 gap-4 shrink-0 overflow-y-auto">
         {/* Step 1: Origen y Tabla */}
         <div>
           <span className="text-[10px] font-bold uppercase tracking-wider text-muted block mb-1">
@@ -1213,13 +1213,15 @@ export function VisualBuilderView({
 
         {/* Central Visualization Canvas */}
         <div
-          className={`flex-1 p-6 overflow-y-auto flex justify-center bg-slate-100 dark:bg-slate-950 ${
+          className={`flex-1 p-4 md:p-6 overflow-y-auto overflow-x-auto flex justify-center bg-slate-100 dark:bg-slate-950 ${
             chartKind === 'table_hierarchical' ? 'items-start' : 'items-center'
           }`}
         >
           <div
             className={`w-full ${
-              chartKind === 'table_hierarchical' ? 'max-w-7xl' : 'max-w-4xl'
+              chartKind === 'table_hierarchical'
+                ? 'min-w-[620px] max-w-6xl'
+                : 'min-w-[400px] max-w-4xl'
             } rounded-3xl p-5 md:p-7 min-h-[440px] flex flex-col justify-between relative overflow-hidden transition-all card-executive ${
               cardTheme === 'gradient'
                 ? 'text-white'
@@ -1326,13 +1328,25 @@ export function VisualBuilderView({
         </div>
       </div>
 
-      {/* Categorized Chart Catalog Drawer */}
-      <ChartCatalogDrawer
-        isOpen={isCatalogDrawerOpen}
-        selectedKind={chartKind}
-        onSelect={(newKind) => setChartKind(newKind)}
-        onClose={() => setIsCatalogDrawerOpen(false)}
-      />
+      {/* Categorized Chart Catalog Drawer - Slide-over overlay on standard laptops / screens, docked on 2xl */}
+      {isCatalogDrawerOpen && (
+        <div
+          onClick={() => setIsCatalogDrawerOpen(false)}
+          className="absolute inset-0 bg-black/20 backdrop-blur-[1px] z-30 transition-opacity 2xl:hidden"
+        />
+      )}
+      <div
+        className={`absolute 2xl:relative top-0 right-0 bottom-0 z-40 h-full flex transition-all duration-300 ${
+          isCatalogDrawerOpen ? 'pointer-events-auto' : 'pointer-events-none 2xl:pointer-events-auto'
+        }`}
+      >
+        <ChartCatalogDrawer
+          isOpen={isCatalogDrawerOpen}
+          selectedKind={chartKind}
+          onSelect={(newKind) => setChartKind(newKind)}
+          onClose={() => setIsCatalogDrawerOpen(false)}
+        />
+      </div>
     </div>
   );
 }

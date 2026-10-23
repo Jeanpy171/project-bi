@@ -965,9 +965,9 @@ export function FinancialStatementCard({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] text-muted uppercase font-bold bg-slate-50/50 dark:bg-slate-900/20">
-                  <th className="py-2 px-3">Cuenta / Concepto</th>
+                  <th className="py-2 px-3 min-w-[160px]">Cuenta / Concepto</th>
                   {data.periods.map((period) => (
-                    <th key={period} className="py-2 px-3 text-right font-mono">
+                    <th key={period} className="py-2 px-3 text-right font-mono min-w-[76px]">
                       {period}
                     </th>
                   ))}
@@ -1037,7 +1037,7 @@ export function FinancialStatementCard({
                       {data.periods.map((period) => (
                         <td
                           key={period}
-                          className={`py-1.5 px-3 text-right font-mono shrink-0 whitespace-nowrap ${
+                          className={`py-1.5 px-3 text-right font-mono shrink-0 whitespace-nowrap min-w-[76px] ${
                             item.isSubtotal || item.isMajorTotal
                               ? 'font-bold'
                               : 'font-normal'
@@ -1128,7 +1128,7 @@ export function FinancialStatementCard({
                               {data.periods.map((period) => (
                                 <td
                                   key={period}
-                                  className="py-1.5 px-3 text-right font-mono text-muted hover:text-foreground shrink-0 whitespace-nowrap"
+                                  className="py-1.5 px-3 text-right font-mono text-muted hover:text-foreground shrink-0 whitespace-nowrap min-w-[76px]"
                                 >
                                   <span className="text-muted/60 text-[10px] mr-1">
                                     {currencySymbol}
@@ -1185,7 +1185,7 @@ export function FinancialStatementCard({
                     {data.periods.map((period) => (
                       <td
                         key={period}
-                        className="py-2 px-3 text-right font-mono text-xs font-black shrink-0 whitespace-nowrap"
+                        className="py-2 px-3 text-right font-mono text-xs font-black shrink-0 whitespace-nowrap min-w-[76px]"
                       >
                         <span className="text-muted/60 text-[11px] mr-1">
                           {currencySymbol}
@@ -1419,9 +1419,9 @@ export function FinancialStatementCard({
       >
         {/* Executive Header Section */}
         <div className="space-y-4">
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             {/* Left: Report Title & Company Details */}
-            <div className="space-y-1.5 flex-1 min-w-0">
+            <div className="space-y-1.5 flex-1 min-w-[240px]">
               {isAuthoringMode ? (
                 <div className="space-y-2">
                   <input
@@ -1455,7 +1455,7 @@ export function FinancialStatementCard({
                 </div>
               ) : (
                 <div>
-                  <h1 className={`text-xl md:text-2xl font-black tracking-tight uppercase ${themeClasses.titleColor}`}>
+                  <h1 className={`text-base sm:text-lg md:text-2xl font-black tracking-tight uppercase leading-snug ${themeClasses.titleColor}`}>
                     {data.reportTitle}
                   </h1>
                   <h2 className="text-base md:text-lg font-bold text-foreground mt-1">

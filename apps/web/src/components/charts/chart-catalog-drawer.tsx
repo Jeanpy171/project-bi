@@ -237,19 +237,19 @@ function ChartSilhouettePreview({ kind }: { readonly kind: DashboardCard['chartK
 
     case 'kpi':
       return (
-        <div className="w-full h-full flex flex-col justify-center items-center px-1">
-          <span className="text-[12px] font-black font-mono tracking-tight text-foreground">$128.4k</span>
-          <span className="text-[9px] font-bold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.2 rounded-full flex items-center gap-0.5 mt-0.5">
-            ▲ +14.2%
-          </span>
-        </div>
+        <svg className="w-full h-full" viewBox="0 0 84 54" fill="none">
+          <rect x="8" y="8" width="68" height="38" rx="6" fill="currentColor" fillOpacity="0.06" stroke="currentColor" strokeOpacity="0.15" />
+          <text x="42" y="26" textAnchor="middle" fill="currentColor" fontSize="11" fontWeight="900" fontFamily="monospace">$128.4k</text>
+          <path d="M 28 36 L 38 31 L 46 34 L 56 29" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="56" cy="29" r="2" fill="#10b981" />
+        </svg>
       );
 
     case 'table_hierarchical':
     default:
       return (
         <svg className="w-full h-full" viewBox="0 0 84 54" fill="none">
-          <rect x="8" y="10" width="68" height="8" rx="1.5" fill="currentColor" strokeOpacity="0.1" className="text-primary/20" />
+          <rect x="8" y="10" width="68" height="8" rx="1.5" fill="currentColor" fillOpacity="0.15" className="text-primary" />
           <line x1="8" y1="23" x2="76" y2="23" stroke="currentColor" strokeOpacity="0.12" />
           <line x1="8" y1="33" x2="76" y2="33" stroke="currentColor" strokeOpacity="0.12" />
           <line x1="8" y1="43" x2="76" y2="43" stroke="currentColor" strokeOpacity="0.12" />
@@ -313,13 +313,13 @@ export function ChartCatalogDrawer({
     <aside
       className={`h-full border-surface-border bg-surface flex flex-col shrink-0 overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
         isOpen
-          ? 'w-88 opacity-100 border-l'
+          ? 'w-76 sm:w-80 opacity-100 border-l shadow-2xl 2xl:shadow-none'
           : 'w-0 opacity-0 pointer-events-none border-l-0'
       }`}
     >
-      <div className="w-88 h-full flex flex-col overflow-hidden">
+      <div className="w-76 sm:w-80 h-full flex flex-col overflow-hidden">
         {/* Panel Header - Integrated Studio Style */}
-        <div className="p-4 border-b border-surface-border flex items-center justify-between shrink-0 bg-surface">
+        <div className="p-3.5 border-b border-surface-border flex items-center justify-between shrink-0 bg-surface">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="p-1.5 rounded-lg bg-surface-subtle text-foreground border border-surface-border shrink-0">
               <Sparkles className="h-4 w-4 text-primary" />
@@ -349,12 +349,12 @@ export function ChartCatalogDrawer({
         </div>
 
         {/* Category Filter Tabs */}
-        <div className="px-4 py-2.5 border-b border-surface-border flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0 bg-surface">
+        <div className="px-3 py-2 border-b border-surface-border flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0 bg-surface">
           {categoriesWithCounts.map((cat) => (
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all ${
+              className={`px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap transition-all ${
                 activeCategory === cat.id
                   ? 'bg-foreground text-background shadow-xs font-bold'
                   : 'bg-surface-subtle border border-surface-border text-muted hover:text-foreground hover:bg-surface-subtle/80'
@@ -365,10 +365,9 @@ export function ChartCatalogDrawer({
           ))}
         </div>
 
-        {/* Gallery Cards List - Twin of Left Step Styling */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2.5 bg-surface">
+        {/* Gallery Cards List - Pure SVG Silhouette previews without corner icons */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-surface">
           {filteredItems.map((item, index) => {
-            const Icon = item.icon;
             const isSelected = selectedKind === item.id;
             const isFirstOfCategory =
               activeCategory === 'all' &&
@@ -376,9 +375,9 @@ export function ChartCatalogDrawer({
             const categoryCount = CHART_CATALOG.filter((c) => c.category === item.category).length;
 
             return (
-              <div key={item.id} className="space-y-1.5">
+              <div key={item.id} className="space-y-1">
                 {isFirstOfCategory && (
-                  <div className="pt-2 pb-0.5 flex items-center justify-between border-b border-surface-border/60">
+                  <div className="pt-1.5 pb-0.5 flex items-center justify-between border-b border-surface-border/60">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
                       {item.categoryLabel}
                     </span>
@@ -391,66 +390,56 @@ export function ChartCatalogDrawer({
                   onClick={() => {
                     onSelect(item.id);
                   }}
-                  className={`p-3 rounded-xl border cursor-pointer transition-all duration-150 flex items-start gap-3 group ${
+                  className={`p-2 rounded-xl border cursor-pointer transition-all duration-150 flex items-center gap-2.5 group ${
                     isSelected
-                      ? 'border-primary/60 bg-primary/[0.04] ring-1 ring-primary/40 shadow-xs'
-                      : 'border-surface-border bg-surface hover:border-surface-border hover:bg-surface-subtle/60'
+                      ? 'border-primary/60 bg-primary/[0.05] ring-1 ring-primary/40 shadow-xs'
+                      : 'border-surface-border bg-surface hover:border-surface-border hover:bg-surface-subtle/70'
                   }`}
                 >
+                  {/* Clean SVG Silhouette - Single Visual Identity, No Redundant Corner Icons */}
                   <div
-                    className={`p-2 rounded-lg border shrink-0 transition-colors ${
+                    className={`w-13 h-10 rounded-lg border shrink-0 overflow-hidden flex items-center justify-center transition-colors p-1 ${
                       isSelected
-                        ? 'bg-primary/10 text-primary border-primary/30'
-                        : 'bg-surface-subtle text-muted border-surface-border group-hover:text-foreground'
+                        ? 'bg-surface border-primary/40 text-primary shadow-xs'
+                        : 'bg-surface-subtle/70 border-surface-border text-foreground/80 group-hover:border-primary/30 group-hover:bg-surface'
                     }`}
                   >
-                    <Icon className="h-4 w-4" />
+                    <ChartSilhouettePreview kind={item.id} />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-1.5">
-                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <h3
-                          className={`text-xs font-bold leading-snug ${
+                          className={`text-xs font-bold leading-tight truncate ${
                             isSelected ? 'text-primary' : 'text-foreground'
                           }`}
                         >
                           {item.title}
                         </h3>
                         {item.badge && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 shrink-0">
+                          <span className="px-1.5 py-0.2 rounded text-[8px] font-extrabold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 shrink-0">
                             {item.badge}
                           </span>
                         )}
                       </div>
                       {isSelected && (
-                        <span className="flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-primary/15 text-primary text-[9px] font-bold shrink-0 border border-primary/25 mt-0.5">
+                        <span className="flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-primary/15 text-primary text-[8px] font-extrabold shrink-0 border border-primary/25">
                           <Check className="h-2.5 w-2.5" />
                           <span>Activo</span>
                         </span>
                       )}
                     </div>
 
-                    <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
+                    <p className="text-[10px] text-muted line-clamp-1 mt-0.5 leading-snug">
                       {item.description}
                     </p>
 
-                    <div className="mt-2 flex items-center gap-1.5">
-                      <span className="text-[9px] font-semibold text-muted bg-surface-subtle px-1.5 py-0.5 rounded border border-surface-border">
-                        📋 {item.dataReq}
+                    <div className="mt-1 flex items-center gap-1">
+                      <span className="text-[8.5px] font-medium text-muted/90 bg-surface-subtle px-1.5 py-0.2 rounded border border-surface-border/80">
+                        {item.dataReq}
                       </span>
                     </div>
-                  </div>
-
-                  {/* SVG Silhouette Mini-Preview Box */}
-                  <div
-                    className={`w-16 h-12 rounded-lg border shrink-0 overflow-hidden flex items-center justify-center transition-colors ${
-                      isSelected
-                        ? 'bg-surface border-primary/30 shadow-2xs'
-                        : 'bg-surface-subtle/50 border-surface-border group-hover:border-surface-border group-hover:bg-surface'
-                    }`}
-                  >
-                    <ChartSilhouettePreview kind={item.id} />
                   </div>
                 </div>
               </div>
@@ -459,9 +448,9 @@ export function ChartCatalogDrawer({
         </div>
 
         {/* Panel Footer */}
-        <div className="p-3.5 border-t border-surface-border bg-surface flex items-center justify-between gap-2 shrink-0">
+        <div className="p-3 border-t border-surface-border bg-surface flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-[11px] text-muted truncate">
+            <span className="text-[10.5px] text-muted truncate">
               Gráfico: <strong className="text-foreground">{CHART_CATALOG.find((c) => c.id === selectedKind)?.title.split('(')[0]}</strong>
             </span>
           </div>
