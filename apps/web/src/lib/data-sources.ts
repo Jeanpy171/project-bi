@@ -138,22 +138,36 @@ export async function fetchPostgresTableRows(
   schema: string,
   tableName: string,
   limit = 100,
-): Promise<{ rows: Record<string, unknown>[]; executionMs: number; error?: string }> {
+): Promise<{ rows: Record<string, unknown>[]; totalRows?: number; executionMs: number; error?: string }> {
   try {
     const sql = `SELECT * FROM "${schema}"."${tableName}" LIMIT ${limit}`;
-    const res = await fetch('/api/queries/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        connection: config,
-        sql,
-        limit,
-        timeoutMs: 10000,
-      }),
-    });
+    const countSql = `SELECT count(*)::bigint as total FROM "${schema}"."${tableName}"`;
 
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
+    const [dataRes, countRes] = await Promise.all([
+      fetch('/api/queries/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          connection: config,
+          sql,
+          limit,
+          timeoutMs: 15000,
+        }),
+      }),
+      fetch('/api/queries/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          connection: config,
+          sql: countSql,
+          limit: 1,
+          timeoutMs: 10000,
+        }),
+      }).catch(() => null),
+    ]);
+
+    if (!dataRes.ok) {
+      const errJson = await dataRes.json().catch(() => ({}));
       return {
         rows: [],
         executionMs: 0,
@@ -161,7 +175,7 @@ export async function fetchPostgresTableRows(
       };
     }
 
-    const payload = (await res.json()) as {
+    const payload = (await dataRes.json()) as {
       data: {
         columns: Array<{ name: string; type: string }>;
         rows: unknown[][];
@@ -169,6 +183,17 @@ export async function fetchPostgresTableRows(
         executionDurationMs: number;
       };
     };
+
+    let totalRows: number | undefined;
+    if (countRes && countRes.ok) {
+      const countPayload = (await countRes.json().catch(() => null)) as {
+        data?: { rows?: unknown[][] };
+      };
+      const rawCount = countPayload?.data?.rows?.[0]?.[0];
+      if (rawCount !== undefined && rawCount !== null) {
+        totalRows = Number(rawCount);
+      }
+    }
 
     const rows: Record<string, unknown>[] = payload.data.rows.map((rowArr) => {
       const rowObj: Record<string, unknown> = {};
@@ -180,6 +205,7 @@ export async function fetchPostgresTableRows(
 
     return {
       rows,
+      totalRows,
       executionMs: payload.data.executionDurationMs,
     };
   } catch (err) {

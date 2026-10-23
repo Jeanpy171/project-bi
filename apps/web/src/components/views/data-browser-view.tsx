@@ -41,6 +41,7 @@ export function DataBrowserView({
 
   // Live PostgreSQL query state
   const [liveRows, setLiveRows] = useState<Record<string, unknown>[]>([]);
+  const [liveTotalRows, setLiveTotalRows] = useState<number | null>(null);
   const [isFetchingLive, setIsFetchingLive] = useState(false);
   const [liveExecutionMs, setLiveExecutionMs] = useState<number | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
@@ -79,10 +80,12 @@ export function DataBrowserView({
         setLiveError(res.error);
       } else {
         setLiveRows(res.rows);
+        setLiveTotalRows(res.totalRows ?? null);
         setLiveExecutionMs(res.executionMs);
       }
     } else {
       setLiveRows([]);
+      setLiveTotalRows(null);
       setLiveExecutionMs(null);
       setLiveError(null);
     }
@@ -246,8 +249,10 @@ export function DataBrowserView({
                   <TableIcon className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-primary' : 'text-muted'}`} />
                   <span className="truncate">{table.name}</span>
                 </div>
-                <span className="text-[10px] text-muted shrink-0 font-normal">
-                  {table.rows.length}
+                <span className="text-[10px] text-muted shrink-0 font-mono font-medium">
+                  {typeof table.rowCountEstimate === 'number'
+                    ? table.rowCountEstimate.toLocaleString()
+                    : table.rows.length.toLocaleString()}
                 </span>
               </button>
             );
@@ -269,6 +274,11 @@ export function DataBrowserView({
                   <span>En Vivo {liveExecutionMs !== null ? `(${liveExecutionMs}ms)` : ''}</span>
                 </span>
               )}
+              <span className="text-xs text-muted font-normal">
+                {currentSource?.connectionConfig
+                  ? `(Cargadas ${activeRows.length} de ${(liveTotalRows ?? currentTable?.rowCountEstimate ?? activeRows.length).toLocaleString()} filas en base de datos)`
+                  : `(${filteredRows.length} de ${currentTable?.rows.length || 0} filas)`}
+              </span>
             </div>
           </div>
 
@@ -287,6 +297,7 @@ export function DataBrowserView({
                   <option value={250}>250 filas</option>
                   <option value={500}>500 filas</option>
                   <option value={1000}>1000 filas</option>
+                  <option value={5000}>Hasta 5000 filas (Todas)</option>
                 </select>
                 <button
                   onClick={loadLiveTableData}
@@ -467,7 +478,15 @@ export function DataBrowserView({
               <strong className="text-foreground">
                 {Math.min(safeCurrentPage * pageSize, processedRows.length)}
               </strong>{' '}
-              de <strong className="text-foreground">{processedRows.length}</strong> registros
+              de <strong className="text-foreground">{processedRows.length}</strong> filas cargadas
+              {currentSource?.connectionConfig && (
+                <span>
+                  {' '}• Total en BDD:{' '}
+                  <strong className="text-foreground">
+                    {(liveTotalRows ?? currentTable?.rowCountEstimate ?? processedRows.length).toLocaleString()}
+                  </strong>
+                </span>
+              )}
               {filterText && ` (filtrados de ${activeRows.length})`}
             </span>
           </div>

@@ -82,6 +82,29 @@ export class PostgresConnector implements DataSourceConnector {
         is_pk: boolean;
       }>(columnsSql);
 
+      // Query table and view row count estimates from PostgreSQL catalogs
+      const countsSql = `
+        SELECT 
+          n.nspname as schema_name,
+          c.relname as table_name,
+          GREATEST(c.reltuples::bigint, 0) as row_count_estimate
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND c.relkind IN ('r', 'v', 'm', 'p');
+      `;
+
+      const countsRes = await client.query<{
+        schema_name: string;
+        table_name: string;
+        row_count_estimate: string | number;
+      }>(countsSql).catch(() => ({ rows: [] }));
+
+      const countMap = new Map<string, number>();
+      for (const cr of countsRes.rows) {
+        countMap.set(`${cr.schema_name}.${cr.table_name}`, Number(cr.row_count_estimate) || 0);
+      }
+
       const tableMap = new Map<string, TableMetadata>();
 
       for (const row of columnsRes.rows) {
@@ -89,9 +112,11 @@ export class PostgresConnector implements DataSourceConnector {
         let table = tableMap.get(key);
 
         if (!table) {
+          const est = countMap.get(key);
           table = {
             schema: row.table_schema,
             name: row.table_name,
+            rowCountEstimate: typeof est === 'number' ? est : undefined,
             columns: [],
           };
           tableMap.set(key, table);
@@ -103,6 +128,22 @@ export class PostgresConnector implements DataSourceConnector {
           isNullable: row.is_nullable === 'YES',
           isPrimaryKey: Boolean(row.is_pk),
         });
+      }
+
+      // Exact count fallback for newly created tables or views where reltuples is 0
+      for (const table of tableMap.values()) {
+        if (!table.rowCountEstimate || table.rowCountEstimate === 0) {
+          try {
+            const countRes = await client.query<{ count: string }>(
+              `SELECT count(*)::bigint as count FROM "${table.schema}"."${table.name}"`,
+            );
+            if (countRes.rows[0]) {
+              table.rowCountEstimate = Number(countRes.rows[0].count) || 0;
+            }
+          } catch {
+            // Ignore view or permissions errors
+          }
+        }
       }
 
       await client.end();
