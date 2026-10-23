@@ -100,5 +100,9 @@ describe('Excel Accounting Rollup and Smart Parsing', () => {
     const padre1 = findRow('1');
     expect(padre1).toBeDefined();
     expect(padre1?.saldo_rollup).toBe(83500);
+
+    // Verify strict hierarchical lexicographical ordering (children sit before next sibling group)
+    const codeOrder = rows.map((r) => r.codigo);
+    expect(codeOrder).toEqual(['1', '11', '111', '111001', '112', '12']);
   });
 });

@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
+  Columns,
   Download,
   Edit2,
+  List,
   Plus,
   Printer,
   RefreshCw,
@@ -271,6 +273,14 @@ export const defaultPnlStatementData: FinancialStatementData = {
   ],
 };
 
+export function parseAccountLabel(label: string): { code?: string; name: string } {
+  const match = label.match(/^([0-9A-Za-z]+)\s*[-:]\s*(.+)$/);
+  if (match && match[1] && match[2]) {
+    return { code: match[1], name: match[2].trim() };
+  }
+  return { name: label };
+}
+
 /**
  * Intelligent generator: converts real table rows into a structured Financial Statement
  */
@@ -391,6 +401,13 @@ export function buildStatementFromActualRows(
     const dataGroup = sectionMap.get(title);
     if (!dataGroup || dataGroup.items.length === 0) return;
 
+    // Strict hierarchical lexicographical code sort so children sit directly underneath parent group
+    dataGroup.items.sort((a, b) => {
+      const codeA = (a.id.match(/row-\d+-(.*)/)?.[1] || a.label).replace(/[^0-9a-zA-Z]/g, '');
+      const codeB = (b.id.match(/row-\d+-(.*)/)?.[1] || b.label).replace(/[^0-9a-zA-Z]/g, '');
+      return codeA.localeCompare(codeB);
+    });
+
     // Subtotal: use the root rollup balance if available, otherwise sum top-level items
     let sectionTotal = rootBalances.get(root);
     if (sectionTotal === undefined) {
@@ -487,6 +504,7 @@ export function FinancialStatementCard({
   };
 
   const [reportMode, setReportMode] = useState<'all' | 'balance' | 'pnl'>(defaultReportMode);
+  const [layoutMode, setLayoutMode] = useState<'two_column' | 'single_column'>('two_column');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   const visibleSections = useMemo(() => {
@@ -498,6 +516,16 @@ export function FinancialStatementCard({
     }
     return data.sections;
   }, [data.sections, reportMode]);
+
+  const leftSections = useMemo(() => {
+    return visibleSections.filter((s) => /activo/i.test(s.title));
+  }, [visibleSections]);
+
+  const rightSections = useMemo(() => {
+    return visibleSections.filter((s) => /pasivo|patrimonio/i.test(s.title));
+  }, [visibleSections]);
+
+  const canUseTwoColumn = leftSections.length > 0 && rightSections.length > 0;
 
   const totalActivos = useMemo(() => {
     const sec = data.sections.find((s) => /activo/i.test(s.title));
@@ -883,6 +911,301 @@ export function FinancialStatementCard({
     }
   }, [selectedTheme]);
 
+  const renderSection = (section: FinancialSection) => {
+    const isCollapsed = Boolean(collapsedSections[section.id]);
+
+    return (
+      <div
+        key={section.id}
+        className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xs"
+      >
+        {/* Section Header Shaded Banner */}
+        <div
+          className={`py-2 px-3 flex items-center justify-between cursor-pointer select-none transition-colors ${themeClasses.sectionBg}`}
+          onClick={() => toggleSection(section.id)}
+        >
+          <div className="flex items-center gap-1.5 font-extrabold uppercase tracking-wide text-xs">
+            {isCollapsed ? (
+              <ChevronRight className="h-3.5 w-3.5 text-muted" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 text-muted" />
+            )}
+            <span>{section.title}</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isAuthoringMode && (
+              <div
+                className="flex items-center gap-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddRowModal(section.id)}
+                  className="p-1 rounded hover:bg-black/10 text-primary font-bold"
+                  title="Añadir fila a esta sección"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSection(section.id)}
+                  className="p-1 rounded hover:bg-danger/20 text-danger"
+                  title="Eliminar sección"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {!isCollapsed && (
+          <div className="overflow-x-auto bg-white dark:bg-slate-900/40">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] text-muted uppercase font-bold bg-slate-50/50 dark:bg-slate-900/20">
+                  <th className="py-2 px-3">Cuenta / Concepto</th>
+                  {data.periods.map((period) => (
+                    <th key={period} className="py-2 px-3 text-right font-mono">
+                      {period}
+                    </th>
+                  ))}
+                  {isAuthoringMode && (
+                    <th className="py-2 px-2 text-right w-16">Acción</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {/* Direct Items */}
+                {section.items?.map((item) => {
+                  const parsed = parseAccountLabel(item.label);
+                  return (
+                    <tr
+                      key={item.id}
+                      className={`border-b border-slate-100 dark:border-slate-800/60 transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
+                        item.isMajorTotal
+                          ? themeClasses.majorTotalBg
+                          : item.isSubtotal
+                          ? `${themeClasses.subtotalBg} font-bold`
+                          : 'text-foreground'
+                      }`}
+                    >
+                      <td
+                        className={`py-1.5 px-3 ${
+                          item.indentLevel === 1
+                            ? 'pl-6'
+                            : item.indentLevel === 2
+                            ? 'pl-10 text-muted'
+                            : 'font-medium'
+                        } ${item.isSubtotal || item.isMajorTotal ? 'font-bold' : ''}`}
+                      >
+                        {isAuthoringMode ? (
+                          <input
+                            type="text"
+                            value={item.label}
+                            onChange={(e) =>
+                              handleItemLabelChange(section.id, item.id, e.target.value)
+                            }
+                            className="w-full px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {parsed.code && (
+                              <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
+                                {parsed.code}
+                              </span>
+                            )}
+                            <span
+                              className={`truncate ${
+                                item.isSubtotal ? 'font-bold text-foreground' : ''
+                              }`}
+                            >
+                              {parsed.name}
+                            </span>
+                            {item.note && (
+                              <span className="text-[10px] text-muted italic ml-1 shrink-0">
+                                {item.note}
+                              </span>
+                            )}
+                            {/* Dotted leader line between text and amount */}
+                            <div className="flex-1 mx-2 border-b border-dotted border-slate-300 dark:border-slate-700 min-w-[12px] self-end mb-1 opacity-70" />
+                          </div>
+                        )}
+                      </td>
+
+                      {data.periods.map((period) => (
+                        <td
+                          key={period}
+                          className={`py-1.5 px-3 text-right font-mono shrink-0 whitespace-nowrap ${
+                            item.isSubtotal || item.isMajorTotal
+                              ? 'font-bold'
+                              : 'font-normal'
+                          }`}
+                        >
+                          {isAuthoringMode ? (
+                            <input
+                              type="number"
+                              value={item.values[period] ?? 0}
+                              onChange={(e) =>
+                                handleCellValChange(
+                                  section.id,
+                                  item.id,
+                                  period,
+                                  Number(e.target.value),
+                                )
+                              }
+                              className="w-24 px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                          ) : (
+                            <>
+                              <span className="text-muted/60 text-[10px] mr-1">
+                                {currencySymbol}
+                              </span>
+                              <span>{formatFinancialNumber(item.values[period])}</span>
+                            </>
+                          )}
+                        </td>
+                      ))}
+
+                      {isAuthoringMode && (
+                        <td className="py-1 px-2 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleCycleIndent(section.id, item.id)}
+                              className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-surface border border-surface-border text-muted hover:text-foreground"
+                              title="Cambiar sangría (N0: Grupo, N1: Cuenta, N2: Subcuenta)"
+                            >
+                              N{item.indentLevel ?? 0}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleInsertRowAfter(section.id, item.id)}
+                              className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                              title="Insertar fila debajo de esta"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteItem(section.id, item.id)}
+                              className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+                              title="Eliminar fila"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+
+                {/* Subsections if any */}
+                {section.subSections?.map((sub) => (
+                  <tr key={sub.id} className="border-b border-slate-200 dark:border-slate-800">
+                    <td
+                      colSpan={data.periods.length + (isAuthoringMode ? 2 : 1)}
+                      className="p-0"
+                    >
+                      <div className="bg-slate-50/80 dark:bg-slate-900/60 font-bold py-1.5 px-3 text-[11px] uppercase tracking-wider text-muted pl-5 border-b border-slate-200 dark:border-slate-800">
+                        {sub.title}
+                      </div>
+                      <table className="w-full text-left text-xs border-collapse">
+                        <tbody>
+                          {sub.items.map((item) => (
+                            <tr
+                              key={item.id}
+                              className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900/50"
+                            >
+                              <td className="py-1.5 px-3 pl-8 text-foreground">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="truncate">{item.label}</span>
+                                  <div className="flex-1 mx-2 border-b border-dotted border-slate-300 dark:border-slate-700 min-w-[12px] self-end mb-1 opacity-70" />
+                                </div>
+                              </td>
+                              {data.periods.map((period) => (
+                                <td
+                                  key={period}
+                                  className="py-1.5 px-3 text-right font-mono text-muted hover:text-foreground shrink-0 whitespace-nowrap"
+                                >
+                                  <span className="text-muted/60 text-[10px] mr-1">
+                                    {currencySymbol}
+                                  </span>
+                                  <span>{formatFinancialNumber(item.values[period])}</span>
+                                </td>
+                              ))}
+                              {isAuthoringMode && <td />}
+                            </tr>
+                          ))}
+                          {sub.subtotal && (
+                            <tr
+                              className={`border-t border-b border-slate-300 dark:border-slate-700 font-bold ${themeClasses.subtotalBg}`}
+                            >
+                              <td className="py-2 px-3 pl-5 uppercase font-bold text-foreground">
+                                {sub.subtotal.label}
+                              </td>
+                              {data.periods.map((period) => (
+                                <td
+                                  key={period}
+                                  className="py-2 px-3 text-right font-mono font-bold text-foreground shrink-0 whitespace-nowrap"
+                                >
+                                  <span className="text-muted/60 text-[10px] mr-1">
+                                    {currencySymbol}
+                                  </span>
+                                  <span>
+                                    {formatFinancialNumber(sub.subtotal?.values[period])}
+                                  </span>
+                                </td>
+                              ))}
+                              {isAuthoringMode && <td />}
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                ))}
+
+                {/* Section Subtotal Row */}
+                {section.subtotal && (
+                  <tr
+                    className={`border-t-2 border-b border-slate-300 dark:border-slate-700 font-black ${
+                      section.subtotal.isNetIncome
+                        ? themeClasses.netIncomeBg
+                        : section.subtotal.isMajorTotal
+                        ? themeClasses.majorTotalBg
+                        : themeClasses.subtotalBg
+                    }`}
+                  >
+                    <td className="py-2 px-3 uppercase tracking-wide">
+                      {section.subtotal.label}
+                    </td>
+                    {data.periods.map((period) => (
+                      <td
+                        key={period}
+                        className="py-2 px-3 text-right font-mono text-xs font-black shrink-0 whitespace-nowrap"
+                      >
+                        <span className="text-muted/60 text-[11px] mr-1">
+                          {currencySymbol}
+                        </span>
+                        <span>
+                          {formatFinancialNumber(section.subtotal?.values[period])}
+                        </span>
+                      </td>
+                    ))}
+                    {isAuthoringMode && <td />}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="w-full flex flex-col space-y-4 font-sans select-text">
       {/* Interactive Controls Bar - Sticky at Top */}
@@ -925,6 +1248,38 @@ export function FinancialStatementCard({
                 Estado de Resultados
               </button>
             </div>
+
+            {/* Layout Switcher: 2 Columnas (T-Account) vs 1 Columna (Reporte) */}
+            {canUseTwoColumn && (
+              <div className="flex items-center p-0.5 rounded-lg border border-surface-border bg-surface-subtle text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode('two_column')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all ${
+                    layoutMode === 'two_column'
+                      ? 'bg-primary text-white shadow-xs'
+                      : 'text-muted hover:text-foreground'
+                  }`}
+                  title="Formato en Cuenta: 2 Columnas lado a lado (Activo vs Pasivo/Patrimonio - Estándar CFO)"
+                >
+                  <Columns className="h-3 w-3" />
+                  <span>2 Columnas (T-Account)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode('single_column')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all ${
+                    layoutMode === 'single_column'
+                      ? 'bg-primary text-white shadow-xs'
+                      : 'text-muted hover:text-foreground'
+                  }`}
+                  title="Formato de Reporte: 1 Columna vertical con guías contables"
+                >
+                  <List className="h-3 w-3" />
+                  <span>1 Columna</span>
+                </button>
+              </div>
+            )}
 
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted ml-2">
               Paleta:
@@ -1176,279 +1531,51 @@ export function FinancialStatementCard({
           </div>
         </div>
 
-        {/* Main Accounting Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b-2 border-slate-400 dark:border-slate-600">
-                <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-muted w-1/3">
-                  Concepto / Cuenta
-                </th>
-                {data.periods.map((period) => (
-                  <th
-                    key={period}
-                    className="py-2.5 px-3 font-bold text-right tracking-wider text-foreground font-mono"
-                  >
-                    {period}
-                  </th>
-                ))}
-                {isAuthoringMode && <th className="py-2 px-2 text-right w-16">Acción</th>}
-              </tr>
-            </thead>
+        {/* Main Accounting Table / Statement Structure */}
+        {canUseTwoColumn && layoutMode === 'two_column' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch pt-2">
+            {/* Left Column: ACTIVOS */}
+            <div className="flex flex-col justify-between rounded-2xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/90 shadow-2xs overflow-hidden">
+              <div className="p-3.5 md:p-5 space-y-4">
+                {leftSections.map((sec) => renderSection(sec))}
+              </div>
+              <div className="mt-auto p-4 bg-slate-100/90 dark:bg-slate-800/90 border-t-2 border-double border-slate-400 dark:border-slate-600 flex items-center justify-between">
+                <span className="font-black text-xs md:text-sm uppercase tracking-wide text-foreground">
+                  TOTAL ACTIVOS
+                </span>
+                <span className="font-mono text-sm md:text-base font-black text-foreground">
+                  {currencySymbol} {formatFinancialNumber(totalActivos)}
+                </span>
+              </div>
+            </div>
 
-            <tbody>
-              {visibleSections.map((section) => {
-                const isCollapsed = Boolean(collapsedSections[section.id]);
-
-                return (
-                  <tbody key={section.id} className="border-b border-slate-200 dark:border-slate-800">
-                    {/* Section Shaded Banner */}
-                    <tr className={`transition-colors ${themeClasses.sectionBg}`}>
-                      <td
-                        onClick={() => toggleSection(section.id)}
-                        className="py-2 px-3 font-extrabold uppercase tracking-wide flex items-center justify-between cursor-pointer select-none"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          {isCollapsed ? (
-                            <ChevronRight className="h-3.5 w-3.5 text-muted" />
-                          ) : (
-                            <ChevronDown className="h-3.5 w-3.5 text-muted" />
-                          )}
-                          <span>{section.title}</span>
-                        </div>
-                      </td>
-                      {data.periods.map((period) => (
-                        <td key={period} className="py-2 px-3 text-right font-mono font-bold">
-                          {period}
-                        </td>
-                      ))}
-                      {isAuthoringMode && (
-                        <td className="py-1 px-2 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => handleOpenAddRowModal(section.id)}
-                              className="p-1 rounded hover:bg-black/10 text-primary font-bold"
-                              title="Añadir fila a esta sección"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSection(section.id)}
-                              className="p-1 rounded hover:bg-danger/20 text-danger"
-                              title="Eliminar sección"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-
-                    {!isCollapsed && (
-                      <>
-                        {/* Section Direct Line Items */}
-                        {section.items?.map((item) => (
-                          <tr
-                            key={item.id}
-                            className={`border-b border-slate-100 dark:border-slate-900 transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/50 ${
-                              item.isMajorTotal
-                                ? themeClasses.majorTotalBg
-                                : item.isSubtotal
-                                ? `${themeClasses.subtotalBg} font-bold`
-                                : 'text-foreground'
-                            }`}
-                          >
-                            <td
-                              className={`py-2 px-3 ${
-                                item.indentLevel === 1
-                                  ? 'pl-7 text-muted'
-                                  : item.indentLevel === 2
-                                  ? 'pl-11 text-muted'
-                                  : 'font-medium'
-                              } ${item.isSubtotal || item.isMajorTotal ? 'font-bold' : ''}`}
-                            >
-                              {isAuthoringMode ? (
-                                <input
-                                  type="text"
-                                  value={item.label}
-                                  onChange={(e) =>
-                                    handleItemLabelChange(section.id, item.id, e.target.value)
-                                  }
-                                  className="w-full px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
-                                />
-                              ) : (
-                                <span>{item.label}</span>
-                              )}
-                              {item.note && !isAuthoringMode && (
-                                <span className="text-[10px] text-muted italic ml-1.5">
-                                  {item.note}
-                                </span>
-                              )}
-                            </td>
-                            {data.periods.map((period) => (
-                              <td
-                                key={period}
-                                className={`py-2 px-3 text-right font-mono ${
-                                  item.isSubtotal || item.isMajorTotal
-                                    ? 'font-bold'
-                                    : 'font-normal'
-                                }`}
-                              >
-                                {isAuthoringMode ? (
-                                  <input
-                                    type="number"
-                                    value={item.values[period] ?? 0}
-                                    onChange={(e) =>
-                                      handleCellValChange(
-                                        section.id,
-                                        item.id,
-                                        period,
-                                        Number(e.target.value),
-                                      )
-                                    }
-                                    className="w-24 px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary"
-                                  />
-                                ) : (
-                                  <>
-                                    <span className="text-muted/60 text-[10px] mr-1.5">
-                                      {currencySymbol}
-                                    </span>
-                                    <span>{formatFinancialNumber(item.values[period])}</span>
-                                  </>
-                                )}
-                              </td>
-                            ))}
-                            {isAuthoringMode && (
-                              <td className="py-1 px-2 text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                  {/* Quick Indent Cycle */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCycleIndent(section.id, item.id)}
-                                    className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-surface border border-surface-border text-muted hover:text-foreground"
-                                    title="Cambiar sangría (N0: Grupo, N1: Cuenta, N2: Subcuenta)"
-                                  >
-                                    N{item.indentLevel ?? 0}
-                                  </button>
-                                  {/* Insert Row Below */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleInsertRowAfter(section.id, item.id)}
-                                    className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
-                                    title="Insertar fila debajo de esta"
-                                  >
-                                    <Plus className="h-3.5 w-3.5" />
-                                  </button>
-                                  {/* Delete Row */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteItem(section.id, item.id)}
-                                    className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
-                                    title="Eliminar fila"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-
-                        {/* Subsections (e.g. VENTA, GENERAL Y ADMINISTRACIÓN) */}
-                        {section.subSections?.map((sub) => (
-                          <tbody key={sub.id}>
-                            <tr className="bg-slate-50/80 dark:bg-slate-900/60 font-bold border-b border-slate-200 dark:border-slate-800">
-                              <td
-                                colSpan={data.periods.length + (isAuthoringMode ? 2 : 1)}
-                                className="py-1.5 px-3 text-[11px] font-black uppercase tracking-wider text-muted pl-5"
-                              >
-                                {sub.title}
-                              </td>
-                            </tr>
-
-                            {sub.items.map((item) => (
-                              <tr
-                                key={item.id}
-                                className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900/50"
-                              >
-                                <td className="py-1.5 px-3 pl-8 text-foreground">
-                                  <span>{item.label}</span>
-                                </td>
-                                {data.periods.map((period) => (
-                                  <td
-                                    key={period}
-                                    className="py-1.5 px-3 text-right font-mono text-muted hover:text-foreground"
-                                  >
-                                    <span className="text-muted/60 text-[10px] mr-1.5">
-                                      {currencySymbol}
-                                    </span>
-                                    <span>{formatFinancialNumber(item.values[period])}</span>
-                                  </td>
-                                ))}
-                                {isAuthoringMode && <td />}
-                              </tr>
-                            ))}
-
-                            {sub.subtotal && (
-                              <tr
-                                className={`border-t border-b border-slate-300 dark:border-slate-700 font-bold ${themeClasses.subtotalBg}`}
-                              >
-                                <td className="py-2 px-3 pl-5 uppercase font-bold text-foreground">
-                                  {sub.subtotal.label}
-                                </td>
-                                {data.periods.map((period) => (
-                                  <td
-                                    key={period}
-                                    className="py-2 px-3 text-right font-mono font-bold text-foreground"
-                                  >
-                                    <span className="text-muted/60 text-[10px] mr-1.5">
-                                      {currencySymbol}
-                                    </span>
-                                    <span>{formatFinancialNumber(sub.subtotal?.values[period])}</span>
-                                  </td>
-                                ))}
-                                {isAuthoringMode && <td />}
-                              </tr>
-                            )}
-                          </tbody>
-                        ))}
-
-                        {/* Section Subtotal / Major Result Row */}
-                        {section.subtotal && (
-                          <tr
-                            className={`border-t-2 border-b-2 border-slate-400 dark:border-slate-600 font-black ${
-                              section.subtotal.isNetIncome
-                                ? themeClasses.netIncomeBg
-                                : section.subtotal.isMajorTotal
-                                ? themeClasses.majorTotalBg
-                                : themeClasses.subtotalBg
-                            }`}
-                          >
-                            <td className="py-2.5 px-3 uppercase tracking-wide">
-                              {section.subtotal.label}
-                            </td>
-                            {data.periods.map((period) => (
-                              <td
-                                key={period}
-                                className="py-2.5 px-3 text-right font-mono text-sm font-black"
-                              >
-                                <span className="text-muted/60 text-[11px] mr-1.5">
-                                  {currencySymbol}
-                                </span>
-                                <span>{formatFinancialNumber(section.subtotal?.values[period])}</span>
-                              </td>
-                            ))}
-                            {isAuthoringMode && <td />}
-                          </tr>
-                        )}
-                      </>
-                    )}
-                  </tbody>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+            {/* Right Column: PASIVOS & PATRIMONIO */}
+            <div className="flex flex-col justify-between rounded-2xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/90 shadow-2xs overflow-hidden">
+              <div className="p-3.5 md:p-5 space-y-4">
+                {rightSections.map((sec) => renderSection(sec))}
+              </div>
+              <div className="mt-auto p-4 bg-slate-100/90 dark:bg-slate-800/90 border-t-2 border-double border-slate-400 dark:border-slate-600 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-xs md:text-sm uppercase tracking-wide text-foreground">
+                    TOTAL PASIVO + PATRIMONIO
+                  </span>
+                  {isBalanceCuadrado && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      ✓ Cuadrado
+                    </span>
+                  )}
+                </div>
+                <span className="font-mono text-sm md:text-base font-black text-foreground">
+                  {currencySymbol} {formatFinancialNumber(totalPasivoMasPatrimonio)}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 pt-2">
+            {visibleSections.map((sec) => renderSection(sec))}
+          </div>
+        )}
 
         {/* Modal for adding a custom row */}
         {newRowDraft && (

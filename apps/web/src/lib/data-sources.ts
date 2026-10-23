@@ -665,7 +665,7 @@ export function deriveHierarchicalRollupTable(
   rollupRows.sort((a, b) => {
     const codeA = String(a.codigo).replace(/[^0-9a-zA-Z]/g, '');
     const codeB = String(b.codigo).replace(/[^0-9a-zA-Z]/g, '');
-    return codeA.localeCompare(codeB, undefined, { numeric: true });
+    return codeA.localeCompare(codeB);
   });
 
   const columns: DataColumn[] = [

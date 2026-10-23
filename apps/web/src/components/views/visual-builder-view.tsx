@@ -1219,8 +1219,8 @@ export function VisualBuilderView({
         >
           <div
             className={`w-full ${
-              chartKind === 'table_hierarchical' ? 'max-w-6xl' : 'max-w-4xl'
-            } rounded-3xl p-7 min-h-[440px] flex flex-col justify-between relative overflow-hidden transition-all card-executive ${
+              chartKind === 'table_hierarchical' ? 'max-w-7xl' : 'max-w-4xl'
+            } rounded-3xl p-5 md:p-7 min-h-[440px] flex flex-col justify-between relative overflow-hidden transition-all card-executive ${
               cardTheme === 'gradient'
                 ? 'text-white'
                 : cardTheme === 'glass'
