@@ -262,7 +262,337 @@ export const demoPostgresSource: DataSource = {
   ],
 };
 
-// 2. Parse uploaded Excel or CSV file
+// 2. Parse uploaded Excel or CSV file with smart header detection and accounting hierarchy derivation
+export function cleanNumericValue(val: unknown): number {
+  if (typeof val === 'number') {
+    return isNaN(val) ? 0 : val;
+  }
+  if (typeof val === 'string') {
+    const cleaned = val.replace(/[^0-9.-]/g, '').trim();
+    if (!cleaned) return 0;
+    const num = Number(cleaned);
+    return isNaN(num) ? 0 : num;
+  }
+  return 0;
+}
+
+export function formatPotentialDate(val: unknown, colName: string): unknown {
+  const isDateColumn = /fecha|date|dia|timestamp/i.test(colName);
+  if (!isDateColumn) return val;
+
+  if (typeof val === 'number' && val > 20000 && val < 70000) {
+    try {
+      return XLSX.SSF.format('yyyy-mm-dd', val);
+    } catch {
+      return val;
+    }
+  }
+  return val;
+}
+
+export function findHeaderRowIndex(sheetMatrix: readonly unknown[][]): number {
+  let bestIndex = 0;
+  let maxScore = -1;
+
+  for (let i = 0; i < Math.min(12, sheetMatrix.length); i++) {
+    const row = sheetMatrix[i] || [];
+    const headerCandidates = row.filter((cell) => {
+      if (typeof cell !== 'string') return false;
+      const trimmed = cell.trim();
+      return trimmed.length >= 2 && trimmed.length <= 80 && isNaN(Number(trimmed));
+    });
+
+    const score = headerCandidates.length;
+    const nextRow = sheetMatrix[i + 1] || [];
+    const hasData = nextRow.some((c) => c !== null && c !== undefined && c !== '');
+    const totalScore = score * 2 + (hasData && score >= 2 ? 3 : 0);
+
+    if (totalScore > maxScore) {
+      maxScore = totalScore;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
+interface DetectedAccountingCols {
+  readonly codeCol?: string;
+  readonly descCol?: string;
+  readonly debitCol?: string;
+  readonly creditCol?: string;
+  readonly balanceCol?: string;
+}
+
+export function detectAccountingColumns(columnNames: readonly string[]): DetectedAccountingCols {
+  let codeCol: string | undefined;
+  let descCol: string | undefined;
+  let debitCol: string | undefined;
+  let creditCol: string | undefined;
+  let balanceCol: string | undefined;
+
+  for (const name of columnNames) {
+    const lower = name.toLowerCase().trim();
+    if (!codeCol && (/c[oó]digo|code/i.test(lower) || (lower === 'cuenta' && !descCol))) {
+      codeCol = name;
+    } else if (!debitCol && /debe|d[eé]bito|debit/i.test(lower)) {
+      debitCol = name;
+    } else if (!creditCol && /haber|cr[eé]dito|credit/i.test(lower)) {
+      creditCol = name;
+    } else if (!balanceCol && /saldo|balance|monto/i.test(lower)) {
+      balanceCol = name;
+    } else if (!descCol && /glosa|descrip|nombre|concepto|detalle/i.test(lower)) {
+      descCol = name;
+    } else if (!descCol && lower === 'cuenta') {
+      descCol = name;
+    }
+  }
+
+  return { codeCol, descCol, debitCol, creditCol, balanceCol };
+}
+
+const KNOWN_ACCOUNT_NAMES: Record<string, string> = {
+  '1': 'ACTIVOS',
+  '2': 'PASIVOS Y PATRIMONIO',
+  '3': 'PATRIMONIO',
+  '4': 'INGRESOS',
+  '5': 'COSTOS',
+  '6': 'GASTOS',
+  '11': 'Activo Corriente',
+  '1.1': 'Activo Corriente',
+  '12': 'Activo No Corriente',
+  '1.2': 'Activo No Corriente',
+  '21': 'Pasivo Corriente',
+  '2.1': 'Pasivo Corriente',
+  '22': 'Pasivo No Corriente',
+  '2.2': 'Pasivo No Corriente',
+  '31': 'Capital Social y Reservas',
+  '3.1': 'Capital Social y Reservas',
+  '41': 'Ingresos Operacionales',
+  '4.1': 'Ingresos Operacionales',
+  '51': 'Costos Operacionales',
+  '5.1': 'Costos Operacionales',
+  '61': 'Gastos Operativos',
+  '6.1': 'Gastos Operativos',
+};
+
+export function deriveAccountHierarchy(
+  accountCode: string,
+): { level: number; hierarchyType: string; cleanCode: string } {
+  const cleanCode = accountCode.replace(/[^0-9a-zA-Z]/g, '');
+  const hasDots = accountCode.includes('.');
+
+  let level = 1;
+  if (hasDots) {
+    level = accountCode.split('.').length;
+  } else {
+    if (cleanCode.length === 1) level = 1;
+    else if (cleanCode.length === 2) level = 2;
+    else if (cleanCode.length <= 4) level = 3;
+    else level = 4;
+  }
+
+  let hierarchyType = 'Padre (Nivel 1)';
+  if (level === 2) hierarchyType = 'Hijo (Nivel 2)';
+  else if (level === 3) hierarchyType = 'Nieto (Nivel 3)';
+  else if (level >= 4) hierarchyType = 'Subcuenta / Tataranieto (Nivel 4+)';
+
+  return { level, hierarchyType, cleanCode };
+}
+
+export function deriveHierarchicalRollupTable(
+  fileId: string,
+  rawTables: readonly DataTable[],
+): DataTable | null {
+  // Find a table with accounting columns
+  let targetTable: DataTable | null = null;
+  let detectedCols: DetectedAccountingCols | null = null;
+
+  for (const tbl of rawTables) {
+    const colNames = tbl.columns.map((c) => c.name);
+    const cols = detectAccountingColumns(colNames);
+    if (cols.codeCol && ((cols.debitCol && cols.creditCol) || cols.balanceCol)) {
+      targetTable = tbl;
+      detectedCols = cols;
+      break;
+    }
+  }
+
+  if (!targetTable || !detectedCols || !detectedCols.codeCol) {
+    return null;
+  }
+
+  // Collect known account names from any other catalog sheets if available
+  const catalogNames = new Map<string, string>();
+  for (const tbl of rawTables) {
+    const colNames = tbl.columns.map((c) => c.name);
+    const codeCol = colNames.find((c) => /c[oó]digo|code/i.test(c));
+    const nameCol = colNames.find((c) => /nombre|cuenta/i.test(c) && !/tipo|subtipo/i.test(c));
+    if (codeCol && nameCol && tbl !== targetTable) {
+      for (const row of tbl.rows) {
+        const code = String(row[codeCol] ?? '').trim();
+        const name = String(row[nameCol] ?? '').trim();
+        if (code && name) {
+          catalogNames.set(code, name);
+          catalogNames.set(code.replace(/[^0-9a-zA-Z]/g, ''), name);
+        }
+      }
+    }
+  }
+
+  const { codeCol, descCol, debitCol, creditCol, balanceCol } = detectedCols;
+
+  interface AccountNode {
+    code: string;
+    cleanCode: string;
+    name: string;
+    directDebe: number;
+    directHaber: number;
+    directBalance: number;
+    level: number;
+    hierarchyType: string;
+  }
+
+  const accountMap = new Map<string, AccountNode>();
+
+  for (const row of targetTable.rows) {
+    const rawCode = row[codeCol];
+    if (rawCode === undefined || rawCode === null || String(rawCode).trim() === '') continue;
+    const code = String(rawCode).trim();
+    const cleanCode = code.replace(/[^0-9a-zA-Z]/g, '');
+    if (!cleanCode) continue;
+
+    const desc = descCol && row[descCol] ? String(row[descCol]).trim() : '';
+    const debe = debitCol ? cleanNumericValue(row[debitCol]) : 0;
+    const haber = creditCol ? cleanNumericValue(row[creditCol]) : 0;
+    const bal = balanceCol ? cleanNumericValue(row[balanceCol]) : debe - haber;
+
+    const { level, hierarchyType } = deriveAccountHierarchy(code);
+
+    if (!accountMap.has(code)) {
+      const knownName =
+        catalogNames.get(code) ||
+        catalogNames.get(cleanCode) ||
+        KNOWN_ACCOUNT_NAMES[code] ||
+        KNOWN_ACCOUNT_NAMES[cleanCode] ||
+        desc ||
+        `Cuenta ${code}`;
+
+      accountMap.set(code, {
+        code,
+        cleanCode,
+        name: knownName,
+        directDebe: 0,
+        directHaber: 0,
+        directBalance: 0,
+        level,
+        hierarchyType,
+      });
+    }
+
+    const acc = accountMap.get(code)!;
+    acc.directDebe += debe;
+    acc.directHaber += haber;
+    acc.directBalance += bal;
+    if (desc && (!acc.name || acc.name.startsWith('Cuenta '))) {
+      acc.name = desc;
+    }
+  }
+
+  // Synthesize standard parent prefixes if missing from entries (e.g. 1 -> 11 -> 111)
+  const existingNodes = Array.from(accountMap.values());
+  for (const node of existingNodes) {
+    const hasDots = node.code.includes('.');
+    const parentCandidates: string[] = [];
+
+    if (hasDots) {
+      const parts = node.code.split('.');
+      for (let i = 1; i < parts.length; i++) {
+        parentCandidates.push(parts.slice(0, i).join('.'));
+      }
+    } else {
+      for (let len = 1; len <= Math.min(3, node.cleanCode.length - 1); len++) {
+        parentCandidates.push(node.cleanCode.substring(0, len));
+      }
+    }
+
+    for (const pCode of parentCandidates) {
+      if (!accountMap.has(pCode)) {
+        const pClean = pCode.replace(/[^0-9a-zA-Z]/g, '');
+        const { level, hierarchyType } = deriveAccountHierarchy(pCode);
+        const pName =
+          catalogNames.get(pCode) ||
+          catalogNames.get(pClean) ||
+          KNOWN_ACCOUNT_NAMES[pCode] ||
+          KNOWN_ACCOUNT_NAMES[pClean] ||
+          `Grupo ${pCode}`;
+
+        accountMap.set(pCode, {
+          code: pCode,
+          cleanCode: pClean,
+          name: pName,
+          directDebe: 0,
+          directHaber: 0,
+          directBalance: 0,
+          level,
+          hierarchyType,
+        });
+      }
+    }
+  }
+
+  // Perform Rollup: for each parent account P, sum all descendants C where C starts with P
+  const allNodes = Array.from(accountMap.values());
+  const rollupRows: Record<string, unknown>[] = allNodes.map((p) => {
+    let totalDebe = 0;
+    let totalHaber = 0;
+    let totalSaldo = 0;
+
+    for (const c of allNodes) {
+      if (c.cleanCode.startsWith(p.cleanCode)) {
+        totalDebe += c.directDebe;
+        totalHaber += c.directHaber;
+        totalSaldo += c.directBalance;
+      }
+    }
+
+    return {
+      codigo: p.code,
+      cuenta: p.name,
+      nivel: p.level,
+      tipo_jerarquia: p.hierarchyType,
+      total_debe: Math.round(totalDebe * 100) / 100,
+      total_haber: Math.round(totalHaber * 100) / 100,
+      saldo_rollup: Math.round(totalSaldo * 100) / 100,
+      movimiento_directo: Math.round(p.directBalance * 100) / 100,
+    };
+  });
+
+  rollupRows.sort((a, b) => {
+    const codeA = String(a.codigo).replace(/[^0-9a-zA-Z]/g, '');
+    const codeB = String(b.codigo).replace(/[^0-9a-zA-Z]/g, '');
+    return codeA.localeCompare(codeB, undefined, { numeric: true });
+  });
+
+  const columns: DataColumn[] = [
+    { name: 'codigo', type: 'string' },
+    { name: 'cuenta', type: 'string' },
+    { name: 'nivel', type: 'number' },
+    { name: 'tipo_jerarquia', type: 'string' },
+    { name: 'total_debe', type: 'number' },
+    { name: 'total_haber', type: 'number' },
+    { name: 'saldo_rollup', type: 'number' },
+    { name: 'movimiento_directo', type: 'number' },
+  ];
+
+  return {
+    id: `tbl-${fileId}-balance-jerarquico`,
+    name: 'Balance General (Jerárquico)',
+    columns,
+    rows: rollupRows,
+  };
+}
+
 export const parseUploadedExcel = async (file: File): Promise<DataSource> => {
   const arrayBuffer = await file.arrayBuffer();
   const workbook = XLSX.read(arrayBuffer, { type: 'array' });
@@ -273,26 +603,82 @@ export const parseUploadedExcel = async (file: File): Promise<DataSource> => {
     const worksheet = workbook.Sheets[sheetName];
     if (!worksheet) continue;
 
-    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' });
+    // Convert sheet to 2D matrix to identify best header row
+    const sheetMatrix = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1 });
+    if (sheetMatrix.length === 0) continue;
+
+    const headerIdx = findHeaderRowIndex(sheetMatrix);
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+      range: headerIdx,
+      defval: '',
+    });
     if (rawRows.length === 0) continue;
 
-    // Detect column types
+    // Identify and filter valid columns (omit empty or unlabelled columns)
     const firstRow = rawRows[0] ?? {};
-    const columns: DataColumn[] = Object.keys(firstRow).map((colName) => {
-      const sampleVal = firstRow[colName];
-      const type: DataColumn['type'] = typeof sampleVal === 'number' ? 'number' : 'string';
+    const validColNames = Object.keys(firstRow).filter((colName) => {
+      const trimmed = colName.trim();
+      return trimmed.length > 0 && !trimmed.startsWith('__EMPTY');
+    });
+
+    if (validColNames.length === 0) continue;
+
+    // Determine column types and format dates
+    const columns: DataColumn[] = validColNames.map((colName) => {
+      let numCount = 0;
+      let totalCount = 0;
+      const isDateCol = /fecha|date|dia/i.test(colName);
+
+      for (const row of rawRows.slice(0, 50)) {
+        const val = row[colName];
+        if (val !== undefined && val !== null && val !== '') {
+          totalCount++;
+          if (typeof val === 'number' || (!isNaN(Number(val)) && !isDateCol)) {
+            numCount++;
+          }
+        }
+      }
+
+      let type: DataColumn['type'] = 'string';
+      if (isDateCol) {
+        type = 'date';
+      } else if (totalCount > 0 && numCount / totalCount >= 0.7) {
+        type = 'number';
+      }
+
       return {
         name: colName,
         type,
       };
     });
 
+    // Clean rows: format dates and prune empty keys
+    const cleanedRows = rawRows.map((row) => {
+      const cleanRow: Record<string, unknown> = {};
+      for (const col of columns) {
+        let val = row[col.name];
+        if (col.type === 'date') {
+          val = formatPotentialDate(val, col.name);
+        } else if (col.type === 'number') {
+          val = cleanNumericValue(val);
+        }
+        cleanRow[col.name] = val;
+      }
+      return cleanRow;
+    });
+
     tables.push({
       id: `tbl-${file.name}-${sheetName}`,
       name: sheetName,
       columns,
-      rows: rawRows,
+      rows: cleanedRows,
     });
+  }
+
+  // Derive hierarchical balance sheet if accounting columns exist
+  const hierarchicalTable = deriveHierarchicalRollupTable(String(Date.now()), tables);
+  if (hierarchicalTable) {
+    tables.unshift(hierarchicalTable);
   }
 
   return {

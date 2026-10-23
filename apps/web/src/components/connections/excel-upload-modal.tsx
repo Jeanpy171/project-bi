@@ -203,8 +203,15 @@ export function ExcelUploadModal({ isOpen, onClose, onSourceAdded }: ExcelUpload
               <div className="space-y-1 text-xs text-foreground">
                 {parsedSource.tables.map((t) => (
                   <div key={t.id} className="flex items-center justify-between pl-6 text-muted">
-                    <span>
-                      Hoja: <strong className="text-foreground">{t.name}</strong> ({t.rows.length} filas)
+                    <span className="flex items-center gap-2">
+                      <span>
+                        Hoja: <strong className="text-foreground">{t.name}</strong> ({t.rows.length} filas)
+                      </span>
+                      {t.name.includes('Jerárquico') && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/20 text-primary border border-primary/30">
+                          ✨ Rollup Jerárquico Auto-generado
+                        </span>
+                      )}
                     </span>
                     <span>{t.columns.length} columnas detectadas</span>
                   </div>
