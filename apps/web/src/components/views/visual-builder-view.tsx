@@ -899,119 +899,340 @@ export function VisualBuilderView({
             </div>
           </div>
 
-          {/* Color Presets & Custom Hex Color (ZERO OVERLAP + SPACING) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-foreground">
-                Color de Gráfico & Marca
-              </span>
-              <span className="text-[10px] font-mono font-bold text-foreground/80">
-                {activeHex}
-              </span>
-            </div>
-
-            {/* Presets with ample gap-3.5 and clear ring */}
-            <div className="flex items-center gap-3.5 py-1.5 px-1 overflow-x-auto">
-              {ACCENT_COLOR_PRESETS.map((preset) => {
-                const isSelected = selectedAccentColor === preset.id && !customHex;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedAccentColor(preset.id);
-                      setCustomHex('');
-                    }}
-                    title={preset.label}
-                    className={`h-7 w-7 rounded-full transition-all shrink-0 flex items-center justify-center ${
-                      isSelected
-                        ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface scale-105 shadow-sm'
-                        : 'hover:scale-110 opacity-80 hover:opacity-100'
-                    }`}
-                    style={{ backgroundColor: preset.hex }}
-                  >
-                    {isSelected && (
-                      <Check className="h-3.5 w-3.5 text-white drop-shadow stroke-[3]" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Custom Hex Picker Input */}
-            <div className="flex items-center gap-2 p-1.5 rounded-lg border border-surface-border bg-surface-subtle/60">
-              <input
-                type="color"
-                value={activeHex}
-                onChange={(e) => {
-                  setCustomHex(e.target.value);
-                }}
-                className="w-6 h-6 p-0 rounded-md border border-surface-border bg-transparent cursor-pointer shrink-0"
-                title="Selector de color personalizado"
-              />
-              <input
-                type="text"
-                value={customHex}
-                placeholder="Hex libre (ej: #0EA5E9)"
-                onChange={(e) => setCustomHex(e.target.value)}
-                className="flex-1 bg-transparent text-xs font-mono font-bold uppercase text-foreground placeholder:text-muted focus:outline-none"
-              />
-              {customHex && (
+          {/* Color Customization: Dedicated for Accounting / Financial Report OR Standard for Charts */}
+          {chartKind === 'table_hierarchical' ? (
+            <div className="space-y-3 p-3 rounded-xl border border-surface-border bg-surface-subtle/50">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-foreground">
+                  🎨 Colores del Reporte Contable
+                </span>
                 <button
                   type="button"
-                  onClick={() => setCustomHex('')}
-                  className="text-[10px] text-muted hover:text-foreground shrink-0 font-medium"
+                  onClick={() => {
+                    setCustomFinancialData((prev) => {
+                      if (!prev) return prev;
+                      return { ...prev, colorCustomization: undefined };
+                    });
+                  }}
+                  className="text-[10px] text-muted hover:text-foreground font-semibold"
                 >
                   Restablecer
                 </button>
-              )}
-            </div>
+              </div>
 
-            {/* Color Mode: Gradient, Palette, Solid */}
-            <div className="pt-1">
-              <span className="block text-[10px] font-semibold text-muted mb-1">
-                Estilo de Color del Gráfico
-              </span>
-              <div className="grid grid-cols-3 gap-1 p-0.5 bg-surface-subtle rounded-lg border border-surface-border text-center">
-                <button
-                  type="button"
-                  onClick={() => setColorMode('gradient')}
-                  className={`py-1 px-1 rounded-md text-[10px] font-bold transition-all ${
-                    colorMode === 'gradient'
-                      ? 'bg-primary text-white shadow-xs'
-                      : 'text-muted hover:text-foreground'
-                  }`}
-                  title="Degradado suave con luminosidad"
-                >
-                  Degradado
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setColorMode('palette')}
-                  className={`py-1 px-1 rounded-md text-[10px] font-bold transition-all ${
-                    colorMode === 'palette'
-                      ? 'bg-primary text-white shadow-xs'
-                      : 'text-muted hover:text-foreground'
-                  }`}
-                  title="Multicolor armónico por categoría"
-                >
-                  Multicolor
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setColorMode('solid')}
-                  className={`py-1 px-1 rounded-md text-[10px] font-bold transition-all ${
-                    colorMode === 'solid'
-                      ? 'bg-primary text-white shadow-xs'
-                      : 'text-muted hover:text-foreground'
-                  }`}
-                  title="Color sólido puro"
-                >
-                  Sólido
-                </button>
+              {/* Escala Numérica / Reducción de Valores */}
+              <div className="space-y-1">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-muted">
+                  Reducción de Escala Numérica:
+                </span>
+                <div className="grid grid-cols-3 gap-1 p-0.5 bg-surface rounded-lg border border-surface-border text-center">
+                  {[
+                    { id: 'normal' as const, label: 'Real ($)', desc: 'Valores completos sin reducción' },
+                    { id: 'thousands' as const, label: 'Miles ($k)', desc: 'Dividir cifras entre 1,000' },
+                    { id: 'millions' as const, label: 'Millones ($M)', desc: 'Dividir cifras entre 1,000,000' },
+                  ].map((sc) => {
+                    const isSelected = (customFinancialData?.valueScale || 'normal') === sc.id;
+                    return (
+                      <button
+                        key={sc.id}
+                        type="button"
+                        onClick={() => {
+                          setCustomFinancialData((prev) => {
+                            if (!prev) return prev;
+                            return { ...prev, valueScale: sc.id };
+                          });
+                        }}
+                        className={`py-1 px-1 rounded-md text-[10px] font-bold transition-all ${
+                          isSelected
+                            ? 'bg-primary text-white shadow-xs'
+                            : 'text-muted hover:text-foreground'
+                        }`}
+                        title={sc.desc}
+                      >
+                        {sc.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Individual Color Inputs for Títulos, Subtítulos, Letras, Franjas */}
+              <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                {/* 1. Color de Títulos */}
+                <div>
+                  <span className="block text-[10px] font-semibold text-foreground mb-1">
+                    Títulos
+                  </span>
+                  <div className="flex items-center gap-1.5 p-1 rounded-lg border border-surface-border bg-surface">
+                    <input
+                      type="color"
+                      value={customFinancialData?.colorCustomization?.titleColor || '#1e3a8a'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomFinancialData((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            colorCustomization: { ...prev.colorCustomization, titleColor: val },
+                          };
+                        });
+                      }}
+                      className="h-5 w-5 rounded border cursor-pointer p-0 bg-transparent shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={customFinancialData?.colorCustomization?.titleColor || ''}
+                      placeholder="#1e3a8a"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomFinancialData((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            colorCustomization: { ...prev.colorCustomization, titleColor: val },
+                          };
+                        });
+                      }}
+                      className="w-full text-[10px] font-mono font-bold uppercase bg-transparent text-foreground focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Color de Subtítulos */}
+                <div>
+                  <span className="block text-[10px] font-semibold text-foreground mb-1">
+                    Subtítulos
+                  </span>
+                  <div className="flex items-center gap-1.5 p-1 rounded-lg border border-surface-border bg-surface">
+                    <input
+                      type="color"
+                      value={customFinancialData?.colorCustomization?.subtitleColor || '#64748b'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomFinancialData((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            colorCustomization: { ...prev.colorCustomization, subtitleColor: val },
+                          };
+                        });
+                      }}
+                      className="h-5 w-5 rounded border cursor-pointer p-0 bg-transparent shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={customFinancialData?.colorCustomization?.subtitleColor || ''}
+                      placeholder="#64748b"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomFinancialData((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            colorCustomization: { ...prev.colorCustomization, subtitleColor: val },
+                          };
+                        });
+                      }}
+                      className="w-full text-[10px] font-mono font-bold uppercase bg-transparent text-foreground focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Color de Letras y Cuentas */}
+                <div>
+                  <span className="block text-[10px] font-semibold text-foreground mb-1">
+                    Letras / Filas
+                  </span>
+                  <div className="flex items-center gap-1.5 p-1 rounded-lg border border-surface-border bg-surface">
+                    <input
+                      type="color"
+                      value={customFinancialData?.colorCustomization?.textColor || '#0f172a'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomFinancialData((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            colorCustomization: { ...prev.colorCustomization, textColor: val },
+                          };
+                        });
+                      }}
+                      className="h-5 w-5 rounded border cursor-pointer p-0 bg-transparent shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={customFinancialData?.colorCustomization?.textColor || ''}
+                      placeholder="#0f172a"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomFinancialData((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            colorCustomization: { ...prev.colorCustomization, textColor: val },
+                          };
+                        });
+                      }}
+                      className="w-full text-[10px] font-mono font-bold uppercase bg-transparent text-foreground focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Fondo de Franjas de Sección */}
+                <div>
+                  <span className="block text-[10px] font-semibold text-foreground mb-1">
+                    Fondo Franjas
+                  </span>
+                  <div className="flex items-center gap-1.5 p-1 rounded-lg border border-surface-border bg-surface">
+                    <input
+                      type="color"
+                      value={customFinancialData?.colorCustomization?.sectionHeaderBg || '#cbd5e1'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomFinancialData((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            colorCustomization: { ...prev.colorCustomization, sectionHeaderBg: val },
+                          };
+                        });
+                      }}
+                      className="h-5 w-5 rounded border cursor-pointer p-0 bg-transparent shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={customFinancialData?.colorCustomization?.sectionHeaderBg || ''}
+                      placeholder="#cbd5e1"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomFinancialData((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            colorCustomization: { ...prev.colorCustomization, sectionHeaderBg: val },
+                          };
+                        });
+                      }}
+                      className="w-full text-[10px] font-mono font-bold uppercase bg-transparent text-foreground focus:outline-none"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-foreground">
+                  Color de Gráfico & Marca
+                </span>
+                <span className="text-[10px] font-mono font-bold text-foreground/80">
+                  {activeHex}
+                </span>
+              </div>
+
+              {/* Presets with ample gap-3.5 and clear ring */}
+              <div className="flex items-center gap-3.5 py-1.5 px-1 overflow-x-auto">
+                {ACCENT_COLOR_PRESETS.map((preset) => {
+                  const isSelected = selectedAccentColor === preset.id && !customHex;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAccentColor(preset.id);
+                        setCustomHex('');
+                      }}
+                      title={preset.label}
+                      className={`h-7 w-7 rounded-full transition-all shrink-0 flex items-center justify-center ${
+                        isSelected
+                          ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface scale-105 shadow-sm'
+                          : 'hover:scale-110 opacity-80 hover:opacity-100'
+                      }`}
+                      style={{ backgroundColor: preset.hex }}
+                    >
+                      {isSelected && (
+                        <Check className="h-3.5 w-3.5 text-white drop-shadow stroke-[3]" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Hex Picker Input */}
+              <div className="flex items-center gap-2 p-1.5 rounded-lg border border-surface-border bg-surface-subtle/60">
+                <input
+                  type="color"
+                  value={activeHex}
+                  onChange={(e) => {
+                    setCustomHex(e.target.value);
+                  }}
+                  className="w-6 h-6 p-0 rounded-md border border-surface-border bg-transparent cursor-pointer shrink-0"
+                  title="Selector de color personalizado"
+                />
+                <input
+                  type="text"
+                  value={customHex}
+                  placeholder="Hex libre (ej: #0EA5E9)"
+                  onChange={(e) => setCustomHex(e.target.value)}
+                  className="flex-1 bg-transparent text-xs font-mono font-bold uppercase text-foreground placeholder:text-muted focus:outline-none"
+                />
+                {customHex && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomHex('')}
+                    className="text-[10px] text-muted hover:text-foreground shrink-0 font-medium"
+                  >
+                    Restablecer
+                  </button>
+                )}
+              </div>
+
+              {/* Color Mode: Gradient, Palette, Solid */}
+              <div className="pt-1">
+                <span className="block text-[10px] font-semibold text-muted mb-1">
+                  Estilo de Color del Gráfico
+                </span>
+                <div className="grid grid-cols-3 gap-1 p-0.5 bg-surface-subtle rounded-lg border border-surface-border text-center">
+                  <button
+                    type="button"
+                    onClick={() => setColorMode('gradient')}
+                    className={`py-1 px-1 rounded-md text-[10px] font-bold transition-all ${
+                      colorMode === 'gradient'
+                        ? 'bg-primary text-white shadow-xs'
+                        : 'text-muted hover:text-foreground'
+                    }`}
+                    title="Degradado suave con luminosidad"
+                  >
+                    Degradado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setColorMode('palette')}
+                    className={`py-1 px-1 rounded-md text-[10px] font-bold transition-all ${
+                      colorMode === 'palette'
+                        ? 'bg-primary text-white shadow-xs'
+                        : 'text-muted hover:text-foreground'
+                    }`}
+                    title="Multicolor armónico por categoría"
+                  >
+                    Multicolor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setColorMode('solid')}
+                    className={`py-1 px-1 rounded-md text-[10px] font-bold transition-all ${
+                      colorMode === 'solid'
+                        ? 'bg-primary text-white shadow-xs'
+                        : 'text-muted hover:text-foreground'
+                    }`}
+                    title="Color sólido puro"
+                  >
+                    Sólido
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Badge Selection & Placement (100% Optional & Flexible) */}
           <div className="space-y-2 pt-2 border-t border-surface-border/70">
@@ -1298,6 +1519,8 @@ export function VisualBuilderView({
                     externalAuthoringMode={isGlobalAuthoringMode}
                     onToggleAuthoringMode={() => setIsGlobalAuthoringMode((p) => !p)}
                     defaultReportMode={financialReportMode}
+                    externalColorCustomization={customFinancialData?.colorCustomization}
+                    externalValueScale={customFinancialData?.valueScale}
                   />
                 </div>
               ) : (

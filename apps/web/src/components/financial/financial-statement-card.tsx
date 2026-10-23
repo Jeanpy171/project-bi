@@ -8,14 +8,29 @@ import {
   Download,
   Edit2,
   List,
+  Maximize2,
+  Minimize2,
+  Palette,
   Plus,
   Printer,
   RefreshCw,
+  RotateCcw,
   Trash2,
   X,
 } from 'lucide-react';
 
 export type FinancialTheme = 'classic_blue' | 'corporate_navy' | 'emerald_finance' | 'minimal_slate';
+
+export interface FinancialColorCustomization {
+  titleColor?: string;
+  subtitleColor?: string;
+  textColor?: string;
+  sectionHeaderBg?: string;
+  subtotalBg?: string;
+  accentColor?: string;
+}
+
+export type FinancialValueScale = 'normal' | 'thousands' | 'millions';
 
 export interface FinancialLineItem {
   id: string;
@@ -55,6 +70,8 @@ export interface FinancialStatementData {
   currencySymbol: string;
   sections: FinancialSection[];
   bottomLines?: FinancialLineItem[];
+  colorCustomization?: FinancialColorCustomization;
+  valueScale?: FinancialValueScale;
 }
 
 export const defaultPnlStatementData: FinancialStatementData = {
@@ -456,6 +473,8 @@ interface FinancialStatementCardProps {
   readonly externalAuthoringMode?: boolean;
   readonly onToggleAuthoringMode?: () => void;
   readonly defaultReportMode?: 'all' | 'balance' | 'pnl';
+  readonly externalColorCustomization?: FinancialColorCustomization;
+  readonly externalValueScale?: FinancialValueScale;
 }
 
 export function FinancialStatementCard({
@@ -469,6 +488,8 @@ export function FinancialStatementCard({
   externalAuthoringMode,
   onToggleAuthoringMode,
   defaultReportMode = 'all',
+  externalColorCustomization,
+  externalValueScale,
 }: FinancialStatementCardProps) {
   // Initialize from actual rows if provided, or from initialData, or default
   const [data, setData] = useState<FinancialStatementData>(() => {
@@ -506,6 +527,87 @@ export function FinancialStatementCard({
   const [reportMode, setReportMode] = useState<'all' | 'balance' | 'pnl'>(defaultReportMode);
   const [layoutMode, setLayoutMode] = useState<'two_column' | 'single_column'>('two_column');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [collapsedSubsections, setCollapsedSubsections] = useState<Record<string, boolean>>({});
+  const [collapsedParentAccounts, setCollapsedParentAccounts] = useState<Record<string, boolean>>({});
+
+  // Color customization state
+  const [colorCustomization, setColorCustomization] = useState<FinancialColorCustomization>(() => {
+    return initialData?.colorCustomization || externalColorCustomization || {};
+  });
+  const [isColorPaletteOpen, setIsColorPaletteOpen] = useState(false);
+
+  // Numerical value scale state (normal, thousands, millions)
+  const [valueScale, setValueScale] = useState<FinancialValueScale>(() => {
+    return initialData?.valueScale || externalValueScale || 'normal';
+  });
+
+  // Synchronize external props if changed from builder view
+  useEffect(() => {
+    if (externalColorCustomization) {
+      setColorCustomization(externalColorCustomization);
+    }
+  }, [externalColorCustomization]);
+
+  useEffect(() => {
+    if (externalValueScale) {
+      setValueScale(externalValueScale);
+    }
+  }, [externalValueScale]);
+
+  const handleColorChange = (key: keyof FinancialColorCustomization, val: string) => {
+    setColorCustomization((prev) => {
+      const next = { ...prev, [key]: val };
+      setData((d) => {
+        const nextData = { ...d, colorCustomization: next };
+        onDataChange?.(nextData);
+        return nextData;
+      });
+      return next;
+    });
+  };
+
+  const handleResetColors = () => {
+    setColorCustomization({});
+    setData((d) => {
+      const nextData = { ...d, colorCustomization: undefined };
+      onDataChange?.(nextData);
+      return nextData;
+    });
+  };
+
+  const handleValueScaleChange = (scale: FinancialValueScale) => {
+    setValueScale(scale);
+    setData((d) => {
+      const nextData = { ...d, valueScale: scale };
+      onDataChange?.(nextData);
+      return nextData;
+    });
+  };
+
+  const handleCollapseAllToParents = () => {
+    const nextCollapsed: Record<string, boolean> = {};
+    data.sections.forEach((s) => {
+      nextCollapsed[s.id] = true;
+    });
+    setCollapsedSections(nextCollapsed);
+  };
+
+  const handleExpandAll = () => {
+    setCollapsedSections({});
+    setCollapsedSubsections({});
+    setCollapsedParentAccounts({});
+  };
+
+  const effectiveColors: FinancialColorCustomization = useMemo(() => {
+    return {
+      titleColor: colorCustomization.titleColor || undefined,
+      subtitleColor: colorCustomization.subtitleColor || undefined,
+      textColor: colorCustomization.textColor || undefined,
+      sectionHeaderBg: colorCustomization.sectionHeaderBg || undefined,
+      subtotalBg: colorCustomization.subtotalBg || undefined,
+      accentColor: colorCustomization.accentColor || undefined,
+    };
+  }, [colorCustomization]);
 
   const visibleSections = useMemo(() => {
     if (reportMode === 'balance') {
@@ -572,13 +674,23 @@ export function FinancialStatementCard({
   const formatFinancialNumber = (num: number | null | undefined): string => {
     if (num === null || num === undefined) return '-';
     if (num === 0) return '-';
-    const isNeg = num < 0;
-    const absVal = Math.abs(num);
+    let scaled = num;
+    let suffix = '';
+    if (valueScale === 'thousands') {
+      scaled = num / 1000;
+      suffix = 'k';
+    } else if (valueScale === 'millions') {
+      scaled = num / 1000000;
+      suffix = 'M';
+    }
+    const isNeg = scaled < 0;
+    const absVal = Math.abs(scaled);
     const formatted = absVal.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
+      minimumFractionDigits: valueScale === 'normal' ? 2 : 1,
       maximumFractionDigits: 2,
     });
-    return isNeg ? `(${formatted})` : formatted;
+    const result = `${formatted}${suffix}`;
+    return isNeg ? `(${result})` : result;
   };
 
   // ==========================================
@@ -921,7 +1033,13 @@ export function FinancialStatementCard({
       >
         {/* Section Header Shaded Banner */}
         <div
-          className={`py-2 px-3 flex items-center justify-between cursor-pointer select-none transition-colors ${themeClasses.sectionBg}`}
+          className={`py-2 px-3 flex items-center justify-between cursor-pointer select-none transition-colors ${
+            effectiveColors.sectionHeaderBg ? '' : themeClasses.sectionBg
+          }`}
+          style={{
+            backgroundColor: effectiveColors.sectionHeaderBg || undefined,
+            color: effectiveColors.titleColor || undefined,
+          }}
           onClick={() => toggleSection(section.id)}
         >
           <div className="flex items-center gap-1.5 font-extrabold uppercase tracking-wide text-xs">
@@ -934,6 +1052,33 @@ export function FinancialStatementCard({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Consolidated roll-up pill summary when section is reduced to parent */}
+            {isCollapsed && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25 shrink-0">
+                  Resumen Consolidado
+                </span>
+                {data.periods.map((period) => {
+                  const val =
+                    section.subtotal?.values[period] ??
+                    (section.items || []).reduce((sum, it) => sum + (it.values[period] || 0), 0);
+                  return (
+                    <span
+                      key={period}
+                      className="inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-700 text-foreground shrink-0 shadow-2xs"
+                      style={{ color: effectiveColors.textColor }}
+                    >
+                      <span className="text-[9px] font-sans text-muted">{period}:</span>
+                      <span>
+                        {currencySymbol}
+                        {formatFinancialNumber(val)}
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
             {isAuthoringMode && (
               <div
                 className="flex items-center gap-1"
@@ -964,7 +1109,10 @@ export function FinancialStatementCard({
           <div className="overflow-x-auto bg-white dark:bg-slate-900/40">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] text-muted uppercase font-bold bg-slate-50/50 dark:bg-slate-900/20">
+                <tr
+                  className="border-b border-slate-200 dark:border-slate-800 text-[10px] uppercase font-bold bg-slate-50/50 dark:bg-slate-900/20"
+                  style={{ color: effectiveColors.subtitleColor || undefined }}
+                >
                   <th className="py-2 px-3 min-w-[160px]">Cuenta / Concepto</th>
                   {data.periods.map((period) => (
                     <th key={period} className="py-2 px-3 text-right font-mono min-w-[76px]">
@@ -977,207 +1125,321 @@ export function FinancialStatementCard({
                 </tr>
               </thead>
               <tbody>
-                {/* Direct Items */}
-                {section.items?.map((item) => {
-                  const parsed = parseAccountLabel(item.label);
-                  return (
-                    <tr
-                      key={item.id}
-                      className={`border-b border-slate-100 dark:border-slate-800/60 transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
-                        item.isMajorTotal
-                          ? themeClasses.majorTotalBg
-                          : item.isSubtotal
-                          ? `${themeClasses.subtotalBg} font-bold`
-                          : 'text-foreground'
-                      }`}
-                    >
-                      <td
-                        className={`py-1.5 px-3 ${
-                          item.indentLevel === 1
-                            ? 'pl-6'
-                            : item.indentLevel === 2
-                            ? 'pl-10 text-muted'
-                            : 'font-medium'
-                        } ${item.isSubtotal || item.isMajorTotal ? 'font-bold' : ''}`}
-                      >
-                        {isAuthoringMode ? (
-                          <input
-                            type="text"
-                            value={item.label}
-                            onChange={(e) =>
-                              handleItemLabelChange(section.id, item.id, e.target.value)
-                            }
-                            className="w-full px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
-                          />
-                        ) : (
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            {parsed.code && (
-                              <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
-                                {parsed.code}
-                              </span>
-                            )}
-                            <span
-                              className={`truncate ${
-                                item.isSubtotal ? 'font-bold text-foreground' : ''
-                              }`}
-                            >
-                              {parsed.name}
-                            </span>
-                            {item.note && (
-                              <span className="text-[10px] text-muted italic ml-1 shrink-0">
-                                {item.note}
-                              </span>
-                            )}
-                            {/* Dotted leader line between text and amount */}
-                            <div className="flex-1 mx-2 border-b border-dotted border-slate-300 dark:border-slate-700 min-w-[12px] self-end mb-1 opacity-70" />
-                          </div>
-                        )}
-                      </td>
+                {/* Direct Items with Parent/Child collapsible support */}
+                {(() => {
+                  let activeCollapsedIndent: number | null = null;
+                  const items = section.items || [];
 
-                      {data.periods.map((period) => (
+                  return items.map((item, idx) => {
+                    const nextItem = items[idx + 1];
+                    const isParentAccount = Boolean(
+                      nextItem && (nextItem.indentLevel ?? 0) > (item.indentLevel ?? 0),
+                    );
+
+                    // Check if this item is hidden under an ancestor collapsed parent
+                    if (activeCollapsedIndent !== null) {
+                      if ((item.indentLevel ?? 0) > activeCollapsedIndent) {
+                        return null; // hide child row
+                      } else {
+                        activeCollapsedIndent = null; // exited collapsed group
+                      }
+                    }
+
+                    if (isParentAccount && collapsedParentAccounts[item.id]) {
+                      activeCollapsedIndent = item.indentLevel ?? 0;
+                    }
+
+                    const isAccountCollapsed = Boolean(collapsedParentAccounts[item.id]);
+                    const parsed = parseAccountLabel(item.label);
+
+                    return (
+                      <tr
+                        key={item.id}
+                        className={`border-b border-slate-100 dark:border-slate-800/60 transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
+                          item.isMajorTotal
+                            ? (effectiveColors.subtotalBg ? '' : themeClasses.majorTotalBg)
+                            : item.isSubtotal
+                            ? (effectiveColors.subtotalBg ? '' : `${themeClasses.subtotalBg} font-bold`)
+                            : 'text-foreground'
+                        }`}
+                        style={{
+                          backgroundColor:
+                            (item.isSubtotal || item.isMajorTotal) && effectiveColors.subtotalBg
+                              ? effectiveColors.subtotalBg
+                              : undefined,
+                        }}
+                      >
                         <td
-                          key={period}
-                          className={`py-1.5 px-3 text-right font-mono shrink-0 whitespace-nowrap min-w-[76px] ${
-                            item.isSubtotal || item.isMajorTotal
-                              ? 'font-bold'
-                              : 'font-normal'
-                          }`}
+                          className={`py-1.5 px-3 ${
+                            item.indentLevel === 1
+                              ? 'pl-6'
+                              : item.indentLevel === 2
+                              ? 'pl-10 text-muted'
+                              : 'font-medium'
+                          } ${item.isSubtotal || item.isMajorTotal ? 'font-bold' : ''}`}
                         >
                           {isAuthoringMode ? (
                             <input
-                              type="number"
-                              value={item.values[period] ?? 0}
+                              type="text"
+                              value={item.label}
                               onChange={(e) =>
-                                handleCellValChange(
-                                  section.id,
-                                  item.id,
-                                  period,
-                                  Number(e.target.value),
-                                )
+                                handleItemLabelChange(section.id, item.id, e.target.value)
                               }
-                              className="w-24 px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                              className="w-full px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
                             />
                           ) : (
-                            <>
-                              <span className="text-muted/60 text-[10px] mr-1">
-                                {currencySymbol}
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {isParentAccount && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCollapsedParentAccounts((prev) => ({
+                                      ...prev,
+                                      [item.id]: !prev[item.id],
+                                    }));
+                                  }}
+                                  className="p-0.5 -ml-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-muted hover:text-foreground shrink-0 transition-colors"
+                                  title={
+                                    isAccountCollapsed
+                                      ? 'Expandir subcuentas de este nivel'
+                                      : 'Reducir subcuentas al padre'
+                                  }
+                                >
+                                  {isAccountCollapsed ? (
+                                    <ChevronRight className="h-3 w-3 text-primary font-bold" />
+                                  ) : (
+                                    <ChevronDown className="h-3 w-3 text-muted" />
+                                  )}
+                                </button>
+                              )}
+                              {parsed.code && (
+                                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
+                                  {parsed.code}
+                                </span>
+                              )}
+                              <span
+                                className={`truncate ${
+                                  item.isSubtotal ? 'font-bold' : ''
+                                }`}
+                                style={{ color: effectiveColors.textColor || undefined }}
+                              >
+                                {parsed.name}
                               </span>
-                              <span>{formatFinancialNumber(item.values[period])}</span>
-                            </>
+                              {isAccountCollapsed && (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-primary/10 text-primary font-bold shrink-0">
+                                  (Reducido)
+                                </span>
+                              )}
+                              {item.note && (
+                                <span className="text-[10px] text-muted italic ml-1 shrink-0">
+                                  {item.note}
+                                </span>
+                              )}
+                              {/* Dotted leader line between text and amount */}
+                              <div className="flex-1 mx-2 border-b border-dotted border-slate-300 dark:border-slate-700 min-w-[12px] self-end mb-1 opacity-70" />
+                            </div>
                           )}
                         </td>
-                      ))}
 
-                      {isAuthoringMode && (
-                        <td className="py-1 px-2 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleCycleIndent(section.id, item.id)}
-                              className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-surface border border-surface-border text-muted hover:text-foreground"
-                              title="Cambiar sangría (N0: Grupo, N1: Cuenta, N2: Subcuenta)"
-                            >
-                              N{item.indentLevel ?? 0}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleInsertRowAfter(section.id, item.id)}
-                              className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
-                              title="Insertar fila debajo de esta"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteItem(section.id, item.id)}
-                              className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
-                              title="Eliminar fila"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                        {data.periods.map((period) => (
+                          <td
+                            key={period}
+                            className={`py-1.5 px-3 text-right font-mono shrink-0 whitespace-nowrap min-w-[76px] ${
+                              item.isSubtotal || item.isMajorTotal
+                                ? 'font-bold'
+                                : 'font-normal'
+                            }`}
+                          >
+                            {isAuthoringMode ? (
+                              <input
+                                type="number"
+                                value={item.values[period] ?? 0}
+                                onChange={(e) =>
+                                  handleCellValChange(
+                                    section.id,
+                                    item.id,
+                                    period,
+                                    Number(e.target.value),
+                                  )
+                                }
+                                className="w-24 px-1.5 py-0.5 rounded border border-surface-border bg-surface text-xs text-right font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                              />
+                            ) : (
+                              <>
+                                <span className="text-muted/60 text-[10px] mr-1">
+                                  {currencySymbol}
+                                </span>
+                                <span style={{ color: effectiveColors.textColor || undefined }}>
+                                  {formatFinancialNumber(item.values[period])}
+                                </span>
+                              </>
+                            )}
+                          </td>
+                        ))}
+
+                        {isAuthoringMode && (
+                          <td className="py-1 px-2 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleCycleIndent(section.id, item.id)}
+                                className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-surface border border-surface-border text-muted hover:text-foreground"
+                                title="Cambiar sangría (N0: Grupo, N1: Cuenta, N2: Subcuenta)"
+                              >
+                                N{item.indentLevel ?? 0}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleInsertRowAfter(section.id, item.id)}
+                                className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                                title="Insertar fila debajo de esta"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteItem(section.id, item.id)}
+                                className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+                                title="Eliminar fila"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  });
+                })()}
+
+                {/* Subsections if any */}
+                {section.subSections?.map((sub) => {
+                  const isSubCollapsed = Boolean(collapsedSubsections[sub.id]);
+                  return (
+                    <tr key={sub.id} className="border-b border-slate-200 dark:border-slate-800">
+                      <td
+                        colSpan={data.periods.length + (isAuthoringMode ? 2 : 1)}
+                        className="p-0"
+                      >
+                        <div
+                          className="bg-slate-50/80 dark:bg-slate-900/60 font-bold py-1.5 px-3 text-[11px] uppercase tracking-wider text-muted pl-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between cursor-pointer select-none hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
+                          onClick={() =>
+                            setCollapsedSubsections((prev) => ({ ...prev, [sub.id]: !prev[sub.id] }))
+                          }
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {isSubCollapsed ? (
+                              <ChevronRight className="h-3 w-3 text-muted" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3 text-muted" />
+                            )}
+                            <span style={{ color: effectiveColors.textColor || undefined }}>
+                              {sub.title}
+                            </span>
                           </div>
-                        </td>
-                      )}
+                          {isSubCollapsed && sub.subtotal && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[9px] text-muted italic font-normal">Subtotal:</span>
+                              {data.periods.map((period) => (
+                                <span
+                                  key={period}
+                                  className="font-mono text-[10px] font-bold text-foreground px-1.5 py-0.2 rounded bg-surface border border-surface-border"
+                                >
+                                  {currencySymbol}
+                                  {formatFinancialNumber(sub.subtotal?.values[period])}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {!isSubCollapsed && (
+                          <table className="w-full text-left text-xs border-collapse">
+                            <tbody>
+                              {sub.items.map((item) => (
+                                <tr
+                                  key={item.id}
+                                  className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900/50"
+                                >
+                                  <td className="py-1.5 px-3 pl-8 text-foreground">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span
+                                        className="truncate"
+                                        style={{ color: effectiveColors.textColor || undefined }}
+                                      >
+                                        {item.label}
+                                      </span>
+                                      <div className="flex-1 mx-2 border-b border-dotted border-slate-300 dark:border-slate-700 min-w-[12px] self-end mb-1 opacity-70" />
+                                    </div>
+                                  </td>
+                                  {data.periods.map((period) => (
+                                    <td
+                                      key={period}
+                                      className="py-1.5 px-3 text-right font-mono text-muted hover:text-foreground shrink-0 whitespace-nowrap min-w-[76px]"
+                                    >
+                                      <span className="text-muted/60 text-[10px] mr-1">
+                                        {currencySymbol}
+                                      </span>
+                                      <span style={{ color: effectiveColors.textColor || undefined }}>
+                                        {formatFinancialNumber(item.values[period])}
+                                      </span>
+                                    </td>
+                                  ))}
+                                  {isAuthoringMode && <td />}
+                                </tr>
+                              ))}
+                              {sub.subtotal && (
+                                <tr
+                                  className={`border-t border-b border-slate-300 dark:border-slate-700 font-bold ${
+                                    effectiveColors.subtotalBg ? '' : themeClasses.subtotalBg
+                                  }`}
+                                  style={{
+                                    backgroundColor: effectiveColors.subtotalBg || undefined,
+                                  }}
+                                >
+                                  <td className="py-2 px-3 pl-5 uppercase font-bold text-foreground">
+                                    {sub.subtotal.label}
+                                  </td>
+                                  {data.periods.map((period) => (
+                                    <td
+                                      key={period}
+                                      className="py-2 px-3 text-right font-mono font-bold text-foreground shrink-0 whitespace-nowrap"
+                                    >
+                                      <span className="text-muted/60 text-[10px] mr-1">
+                                        {currencySymbol}
+                                      </span>
+                                      <span style={{ color: effectiveColors.textColor || undefined }}>
+                                        {formatFinancialNumber(sub.subtotal?.values[period])}
+                                      </span>
+                                    </td>
+                                  ))}
+                                  {isAuthoringMode && <td />}
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
-
-                {/* Subsections if any */}
-                {section.subSections?.map((sub) => (
-                  <tr key={sub.id} className="border-b border-slate-200 dark:border-slate-800">
-                    <td
-                      colSpan={data.periods.length + (isAuthoringMode ? 2 : 1)}
-                      className="p-0"
-                    >
-                      <div className="bg-slate-50/80 dark:bg-slate-900/60 font-bold py-1.5 px-3 text-[11px] uppercase tracking-wider text-muted pl-5 border-b border-slate-200 dark:border-slate-800">
-                        {sub.title}
-                      </div>
-                      <table className="w-full text-left text-xs border-collapse">
-                        <tbody>
-                          {sub.items.map((item) => (
-                            <tr
-                              key={item.id}
-                              className="border-b border-slate-100 dark:border-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900/50"
-                            >
-                              <td className="py-1.5 px-3 pl-8 text-foreground">
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                  <span className="truncate">{item.label}</span>
-                                  <div className="flex-1 mx-2 border-b border-dotted border-slate-300 dark:border-slate-700 min-w-[12px] self-end mb-1 opacity-70" />
-                                </div>
-                              </td>
-                              {data.periods.map((period) => (
-                                <td
-                                  key={period}
-                                  className="py-1.5 px-3 text-right font-mono text-muted hover:text-foreground shrink-0 whitespace-nowrap min-w-[76px]"
-                                >
-                                  <span className="text-muted/60 text-[10px] mr-1">
-                                    {currencySymbol}
-                                  </span>
-                                  <span>{formatFinancialNumber(item.values[period])}</span>
-                                </td>
-                              ))}
-                              {isAuthoringMode && <td />}
-                            </tr>
-                          ))}
-                          {sub.subtotal && (
-                            <tr
-                              className={`border-t border-b border-slate-300 dark:border-slate-700 font-bold ${themeClasses.subtotalBg}`}
-                            >
-                              <td className="py-2 px-3 pl-5 uppercase font-bold text-foreground">
-                                {sub.subtotal.label}
-                              </td>
-                              {data.periods.map((period) => (
-                                <td
-                                  key={period}
-                                  className="py-2 px-3 text-right font-mono font-bold text-foreground shrink-0 whitespace-nowrap"
-                                >
-                                  <span className="text-muted/60 text-[10px] mr-1">
-                                    {currencySymbol}
-                                  </span>
-                                  <span>
-                                    {formatFinancialNumber(sub.subtotal?.values[period])}
-                                  </span>
-                                </td>
-                              ))}
-                              {isAuthoringMode && <td />}
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </td>
-                  </tr>
-                ))}
 
                 {/* Section Subtotal Row */}
                 {section.subtotal && (
                   <tr
                     className={`border-t-2 border-b border-slate-300 dark:border-slate-700 font-black ${
-                      section.subtotal.isNetIncome
+                      effectiveColors.subtotalBg
+                        ? ''
+                        : section.subtotal.isNetIncome
                         ? themeClasses.netIncomeBg
                         : section.subtotal.isMajorTotal
                         ? themeClasses.majorTotalBg
                         : themeClasses.subtotalBg
                     }`}
+                    style={{
+                      backgroundColor: effectiveColors.subtotalBg || undefined,
+                      color: effectiveColors.titleColor || undefined,
+                    }}
                   >
                     <td className="py-2 px-3 uppercase tracking-wide">
                       {section.subtotal.label}
@@ -1190,7 +1452,7 @@ export function FinancialStatementCard({
                         <span className="text-muted/60 text-[11px] mr-1">
                           {currencySymbol}
                         </span>
-                        <span>
+                        <span style={{ color: effectiveColors.textColor || undefined }}>
                           {formatFinancialNumber(section.subtotal?.values[period])}
                         </span>
                       </td>
@@ -1309,6 +1571,61 @@ export function FinancialStatementCard({
               <option value="Bs.">Bs. (Bolívares)</option>
               <option value="">Sin símbolo</option>
             </select>
+
+            {/* Escala Numérica / Reducción de Valores */}
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted ml-1">
+              Escala:
+            </span>
+            <select
+              value={valueScale}
+              onChange={(e) => handleValueScaleChange(e.target.value as FinancialValueScale)}
+              className="px-2 py-1 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
+              title="Reducir escala numérica de todos los valores del reporte"
+            >
+              <option value="normal">Normal ($)</option>
+              <option value="thousands">Miles ($k)</option>
+              <option value="millions">Millones ($M)</option>
+            </select>
+
+            {/* Acciones de Reducción Jerárquica al Padre */}
+            <div className="flex items-center p-0.5 rounded-lg border border-surface-border bg-surface-subtle text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={handleCollapseAllToParents}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-muted hover:text-foreground hover:bg-surface transition-all"
+                title="Reducir todos los valores a sus niveles superiores / padres"
+              >
+                <Minimize2 className="h-3 w-3 text-primary" />
+                <span>Reducir a Padres</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExpandAll}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-muted hover:text-foreground hover:bg-surface transition-all"
+                title="Expandir todas las cuentas y niveles"
+              >
+                <Maximize2 className="h-3 w-3 text-muted" />
+                <span>Expandir Todo</span>
+              </button>
+            </div>
+
+            {/* Botón Personalizar Colores (Títulos, Subtítulos, Letras, Franjas) */}
+            <button
+              type="button"
+              onClick={() => setIsColorPaletteOpen((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold transition-all shadow-xs ${
+                isColorPaletteOpen || Object.keys(colorCustomization).length > 0
+                  ? 'border-primary/40 bg-primary/10 text-primary shadow-primary/10'
+                  : 'border-surface-border bg-surface text-foreground hover:bg-surface-subtle'
+              }`}
+              title="Personalizar colores de títulos, subtítulos, letras y franjas"
+            >
+              <Palette className="h-3.5 w-3.5" />
+              <span>Colores & Estilos</span>
+              {Object.keys(colorCustomization).length > 0 && (
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
+            </button>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -1375,6 +1692,144 @@ export function FinancialStatementCard({
             </button>
           </div>
         </div>
+
+        {/* Color Customization Panel (Títulos, Subtítulos, Letras, Franjas, Subtotales) */}
+        {isColorPaletteOpen && (
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-900 border border-surface-border rounded-xl space-y-3 shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
+                <Palette className="h-4 w-4 text-primary" />
+                <span>Personalizar Colores del Reporte Contable</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetColors}
+                className="flex items-center gap-1 text-[11px] text-muted hover:text-foreground font-semibold px-2 py-0.5 rounded border border-surface-border bg-surface hover:bg-surface-subtle transition-all"
+                title="Restablecer todos los colores a los valores por defecto del tema"
+              >
+                <RotateCcw className="h-3 w-3 text-muted" />
+                <span>Restablecer por Defecto</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 text-xs">
+              {/* 1. Títulos */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-foreground">
+                  Color de Títulos:
+                </label>
+                <div className="flex items-center gap-1.5 p-1 rounded-lg border border-surface-border bg-surface">
+                  <input
+                    type="color"
+                    value={colorCustomization.titleColor || '#1e3a8a'}
+                    onChange={(e) => handleColorChange('titleColor', e.target.value)}
+                    className="h-6 w-6 rounded border cursor-pointer p-0 bg-transparent shrink-0"
+                    title="Selector de color para Títulos"
+                  />
+                  <input
+                    type="text"
+                    value={colorCustomization.titleColor || ''}
+                    placeholder="#1e3a8a"
+                    onChange={(e) => handleColorChange('titleColor', e.target.value)}
+                    className="w-full text-[11px] font-mono font-bold uppercase bg-transparent text-foreground focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* 2. Subtítulos & Metadatos */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-foreground">
+                  Color de Subtítulos:
+                </label>
+                <div className="flex items-center gap-1.5 p-1 rounded-lg border border-surface-border bg-surface">
+                  <input
+                    type="color"
+                    value={colorCustomization.subtitleColor || '#64748b'}
+                    onChange={(e) => handleColorChange('subtitleColor', e.target.value)}
+                    className="h-6 w-6 rounded border cursor-pointer p-0 bg-transparent shrink-0"
+                    title="Selector de color para Subtítulos"
+                  />
+                  <input
+                    type="text"
+                    value={colorCustomization.subtitleColor || ''}
+                    placeholder="#64748b"
+                    onChange={(e) => handleColorChange('subtitleColor', e.target.value)}
+                    className="w-full text-[11px] font-mono font-bold uppercase bg-transparent text-foreground focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* 3. Letras de Cuentas y Números */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-foreground">
+                  Letras & Valores:
+                </label>
+                <div className="flex items-center gap-1.5 p-1 rounded-lg border border-surface-border bg-surface">
+                  <input
+                    type="color"
+                    value={colorCustomization.textColor || '#0f172a'}
+                    onChange={(e) => handleColorChange('textColor', e.target.value)}
+                    className="h-6 w-6 rounded border cursor-pointer p-0 bg-transparent shrink-0"
+                    title="Selector de color para Letras y Valores"
+                  />
+                  <input
+                    type="text"
+                    value={colorCustomization.textColor || ''}
+                    placeholder="#0f172a"
+                    onChange={(e) => handleColorChange('textColor', e.target.value)}
+                    className="w-full text-[11px] font-mono font-bold uppercase bg-transparent text-foreground focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* 4. Franja de Sección (Header Banner) */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-foreground">
+                  Fondo de Franjas:
+                </label>
+                <div className="flex items-center gap-1.5 p-1 rounded-lg border border-surface-border bg-surface">
+                  <input
+                    type="color"
+                    value={colorCustomization.sectionHeaderBg || '#cbd5e1'}
+                    onChange={(e) => handleColorChange('sectionHeaderBg', e.target.value)}
+                    className="h-6 w-6 rounded border cursor-pointer p-0 bg-transparent shrink-0"
+                    title="Selector de color para Franjas de Sección"
+                  />
+                  <input
+                    type="text"
+                    value={colorCustomization.sectionHeaderBg || ''}
+                    placeholder="#cbd5e1"
+                    onChange={(e) => handleColorChange('sectionHeaderBg', e.target.value)}
+                    className="w-full text-[11px] font-mono font-bold uppercase bg-transparent text-foreground focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* 5. Fondo de Subtotales */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-semibold text-foreground">
+                  Fondo Subtotales:
+                </label>
+                <div className="flex items-center gap-1.5 p-1 rounded-lg border border-surface-border bg-surface">
+                  <input
+                    type="color"
+                    value={colorCustomization.subtotalBg || '#e2e8f0'}
+                    onChange={(e) => handleColorChange('subtotalBg', e.target.value)}
+                    className="h-6 w-6 rounded border cursor-pointer p-0 bg-transparent shrink-0"
+                    title="Selector de color para Filas de Totales"
+                  />
+                  <input
+                    type="text"
+                    value={colorCustomization.subtotalBg || ''}
+                    placeholder="#e2e8f0"
+                    onChange={(e) => handleColorChange('subtotalBg', e.target.value)}
+                    className="w-full text-[11px] font-mono font-bold uppercase bg-transparent text-foreground focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Accounting Equation Check Banner for Balance General */}
         {(reportMode === 'balance' || reportMode === 'all') && totalActivos > 0 && (
@@ -1455,30 +1910,57 @@ export function FinancialStatementCard({
                 </div>
               ) : (
                 <div>
-                  <h1 className={`text-base sm:text-lg md:text-2xl font-black tracking-tight uppercase leading-snug ${themeClasses.titleColor}`}>
+                  <h1
+                    className={`text-base sm:text-lg md:text-2xl font-black tracking-tight uppercase leading-snug ${
+                      effectiveColors.titleColor ? '' : themeClasses.titleColor
+                    }`}
+                    style={{ color: effectiveColors.titleColor || undefined }}
+                  >
                     {data.reportTitle}
                   </h1>
-                  <h2 className="text-base md:text-lg font-bold text-foreground mt-1">
+                  <h2
+                    className="text-base md:text-lg font-bold mt-1"
+                    style={{ color: effectiveColors.titleColor || undefined }}
+                  >
                     {data.companyName}
                   </h2>
-                  <p className="text-xs text-muted mt-0.5">{data.address}</p>
-                  <p className="text-xs text-muted">{data.phone}</p>
+                  <p
+                    className="text-xs mt-0.5"
+                    style={{ color: effectiveColors.subtitleColor || undefined }}
+                  >
+                    {data.address}
+                  </p>
+                  <p
+                    className="text-xs"
+                    style={{ color: effectiveColors.subtitleColor || undefined }}
+                  >
+                    {data.phone}
+                  </p>
                 </div>
               )}
             </div>
 
             {/* Right: Accounting Metadata Box */}
             <div className="shrink-0 flex flex-col items-end">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-1.5">
+              <h3
+                className="text-xs font-bold uppercase tracking-wider text-muted mb-1.5"
+                style={{ color: effectiveColors.subtitleColor || undefined }}
+              >
                 ESTRUCTURA CONTABLE
               </h3>
               <table className="text-xs border border-slate-300 dark:border-slate-700 rounded-lg overflow-hidden">
                 <tbody>
                   <tr className="border-b border-slate-300 dark:border-slate-700">
-                    <td className="px-3 py-1 bg-slate-100 dark:bg-slate-800/80 font-bold text-muted text-[10px] uppercase">
+                    <td
+                      className="px-3 py-1 bg-slate-100 dark:bg-slate-800/80 font-bold text-muted text-[10px] uppercase"
+                      style={{ color: effectiveColors.subtitleColor || undefined }}
+                    >
                       FECHA DE CORTE
                     </td>
-                    <td className="px-3 py-1 font-mono text-right font-medium">
+                    <td
+                      className="px-3 py-1 font-mono text-right font-medium"
+                      style={{ color: effectiveColors.textColor || undefined }}
+                    >
                       {isAuthoringMode ? (
                         <input
                           type="text"
@@ -1492,10 +1974,16 @@ export function FinancialStatementCard({
                     </td>
                   </tr>
                   <tr className="border-b border-slate-300 dark:border-slate-700">
-                    <td className="px-3 py-1 bg-slate-100 dark:bg-slate-800/80 font-bold text-muted text-[10px] uppercase">
+                    <td
+                      className="px-3 py-1 bg-slate-100 dark:bg-slate-800/80 font-bold text-muted text-[10px] uppercase"
+                      style={{ color: effectiveColors.subtitleColor || undefined }}
+                    >
                       INICIO
                     </td>
-                    <td className="px-3 py-1 font-mono text-right font-medium">
+                    <td
+                      className="px-3 py-1 font-mono text-right font-medium"
+                      style={{ color: effectiveColors.textColor || undefined }}
+                    >
                       {isAuthoringMode ? (
                         <input
                           type="text"
@@ -1509,10 +1997,16 @@ export function FinancialStatementCard({
                     </td>
                   </tr>
                   <tr>
-                    <td className="px-3 py-1 bg-slate-100 dark:bg-slate-800/80 font-bold text-muted text-[10px] uppercase">
+                    <td
+                      className="px-3 py-1 bg-slate-100 dark:bg-slate-800/80 font-bold text-muted text-[10px] uppercase"
+                      style={{ color: effectiveColors.subtitleColor || undefined }}
+                    >
                       CIERRE
                     </td>
-                    <td className="px-3 py-1 font-mono text-right font-medium">
+                    <td
+                      className="px-3 py-1 font-mono text-right font-medium"
+                      style={{ color: effectiveColors.textColor || undefined }}
+                    >
                       {isAuthoringMode ? (
                         <input
                           type="text"
