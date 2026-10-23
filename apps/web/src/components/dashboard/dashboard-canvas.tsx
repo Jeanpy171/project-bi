@@ -19,6 +19,7 @@ import { CardExpandModal } from './card-expand-modal';
 import { ShareDashboardModal } from './share-dashboard-modal';
 import { ExportPdfModal } from './export-pdf-modal';
 import { DashboardOnboarding } from './dashboard-onboarding';
+import type { DataSource } from '../../lib/data-sources';
 import {
   ArrowDown,
   ArrowUp,
@@ -113,11 +114,13 @@ interface DashboardCanvasProps {
   readonly initialDocument: DashboardDocument;
   readonly dynamicCards: readonly DynamicCard[];
   readonly onDeleteCard: (index: number) => void;
-  readonly onNavigateToBuilder: () => void;
+  readonly onNavigateToBuilder: (context?: { sourceId?: string; tableId?: string }) => void;
+  readonly onNavigateToBrowse?: (context?: { sourceId?: string; tableId?: string }) => void;
   readonly isDarkMode: boolean;
   readonly onOpenConnectionModal?: () => void;
   readonly onOpenUploadExcel?: () => void;
   readonly onEnsureDemoSource?: () => void;
+  readonly dataSources?: readonly DataSource[];
 }
 
 const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v9';
@@ -250,10 +253,12 @@ export function DashboardCanvas({
   initialDocument,
   dynamicCards,
   onNavigateToBuilder,
+  onNavigateToBrowse,
   isDarkMode,
   onOpenConnectionModal,
   onOpenUploadExcel,
   onEnsureDemoSource,
+  dataSources = [],
 }: DashboardCanvasProps) {
   const [doc] = useState<DashboardDocument>(initialDocument);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -971,7 +976,7 @@ export function DashboardCanvas({
             </button>
 
             <button
-              onClick={onNavigateToBuilder}
+              onClick={() => onNavigateToBuilder()}
               className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary-hover transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             >
               <Plus className="h-4 w-4" />
@@ -1020,9 +1025,12 @@ export function DashboardCanvas({
 
       {cards.length === 0 ? (
         <DashboardOnboarding
+          dataSources={dataSources}
           onOpenConnectionModal={onOpenConnectionModal || (() => {})}
           onLoadDemo={handleLoadDemo}
           onOpenUploadExcel={onOpenUploadExcel || (() => {})}
+          onNavigateToBuilder={onNavigateToBuilder}
+          onNavigateToBrowse={onNavigateToBrowse}
         />
       ) : (
         /* Unified 12-Column Flexible Grid */

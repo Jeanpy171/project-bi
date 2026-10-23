@@ -43,6 +43,85 @@ export default function HomePage() {
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
+  // Synchronize view and context from URL on initial load and handle browser back/forward
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const readStateFromUrl = () => {
+      const path = window.location.pathname.replace(/^\//, '').toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      const viewParam = params.get('view');
+      const sourceParam = params.get('source');
+      const tableParam = params.get('table');
+
+      let initialView: AppView = 'dashboards';
+      const validViews: AppView[] = ['dashboards', 'browse', 'builder', 'connections'];
+
+      if (viewParam && validViews.includes(viewParam as AppView)) {
+        initialView = viewParam as AppView;
+      } else if (path && validViews.includes(path as AppView)) {
+        initialView = path as AppView;
+      }
+
+      setCurrentView(initialView);
+      if (sourceParam || tableParam) {
+        setBuilderContext({
+          sourceId: sourceParam || undefined,
+          tableId: tableParam || undefined,
+        });
+      }
+    };
+
+    readStateFromUrl();
+
+    const handlePopState = () => {
+      readStateFromUrl();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Coordinated URL navigation helper
+  const navigateToView = (
+    view: AppView,
+    context?: { sourceId?: string; tableId?: string },
+  ) => {
+    setCurrentView(view);
+    const nextContext = context
+      ? { ...builderContext, ...context }
+      : view === 'dashboards' || view === 'connections'
+      ? {}
+      : builderContext;
+    setBuilderContext(nextContext);
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams();
+      if (view !== 'dashboards') {
+        params.set('view', view);
+      }
+      if (nextContext.sourceId) params.set('source', nextContext.sourceId);
+      if (nextContext.tableId) params.set('table', nextContext.tableId);
+
+      const qs = params.toString();
+      const nextUrl = qs ? `/?${qs}` : '/';
+      window.history.pushState({ view, context: nextContext }, '', nextUrl);
+    }
+  };
+
+  const handleTableSelectedInBrowser = (sourceId: string, tableId: string) => {
+    setBuilderContext({ sourceId, tableId });
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      params.set('view', 'browse');
+      if (sourceId) params.set('source', sourceId);
+      else params.delete('source');
+      if (tableId) params.set('table', tableId);
+      else params.delete('table');
+      window.history.replaceState({ view: 'browse', sourceId, tableId }, '', `/?${params.toString()}`);
+    }
+  };
+
   // Load saved PostgreSQL connections on mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -112,19 +191,9 @@ export default function HomePage() {
     }
   };
 
-  const handleOpenBuilderWithTable = (sourceId: string, tableId: string) => {
-    setBuilderContext({ sourceId, tableId });
-    setCurrentView('builder');
-  };
-
-  const handleSelectTableFromConnections = (sourceId: string, tableId: string) => {
-    setBuilderContext({ sourceId, tableId });
-    setCurrentView('browse');
-  };
-
   const handleSaveCardToDashboard = (card: DynamicCard) => {
     setDynamicCards((prev) => [card, ...prev]);
-    setCurrentView('dashboards');
+    navigateToView('dashboards');
   };
 
   const handleDeleteCard = (index: number) => {
@@ -136,7 +205,7 @@ export default function HomePage() {
       {/* Persistent Metabase-grade Navigation Sidebar */}
       <Sidebar
         currentView={currentView}
-        onViewChange={setCurrentView}
+        onViewChange={(v) => navigateToView(v)}
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleDarkMode}
         onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
@@ -151,19 +220,24 @@ export default function HomePage() {
             initialDocument={initialDashboardDoc}
             dynamicCards={dynamicCards}
             onDeleteCard={handleDeleteCard}
-            onNavigateToBuilder={() => setCurrentView('builder')}
+            onNavigateToBuilder={(ctx) => navigateToView('builder', ctx)}
+            onNavigateToBrowse={(ctx) => navigateToView('browse', ctx)}
             isDarkMode={isDarkMode}
             onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
             onOpenUploadExcel={() => setIsExcelModalOpen(true)}
             onEnsureDemoSource={handleEnsureDemoSource}
+            dataSources={dataSources}
           />
         )}
 
         {currentView === 'browse' && (
           <DataBrowserView
             dataSources={dataSources}
-            onOpenBuilderWithTable={handleOpenBuilderWithTable}
+            initialSourceId={builderContext.sourceId}
+            initialTableId={builderContext.tableId}
+            onOpenBuilderWithTable={(s, t) => navigateToView('builder', { sourceId: s, tableId: t })}
             onOpenUploadExcel={() => setIsExcelModalOpen(true)}
+            onTableSelected={handleTableSelectedInBrowser}
           />
         )}
 
@@ -183,7 +257,8 @@ export default function HomePage() {
             dataSources={dataSources}
             onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
             onOpenUploadExcel={() => setIsExcelModalOpen(true)}
-            onSelectTable={handleSelectTableFromConnections}
+            onSelectTable={(s, t) => navigateToView('browse', { sourceId: s, tableId: t })}
+            onOpenBuilderWithTable={(s, t) => navigateToView('builder', { sourceId: s, tableId: t })}
           />
         )}
       </div>

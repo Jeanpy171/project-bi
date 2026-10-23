@@ -9,6 +9,22 @@ const nextConfig: NextConfig = {
         source: '/api/:path*',
         destination: 'http://localhost:3001/api/:path*',
       },
+      {
+        source: '/dashboards',
+        destination: '/?view=dashboards',
+      },
+      {
+        source: '/browse',
+        destination: '/?view=browse',
+      },
+      {
+        source: '/builder',
+        destination: '/?view=builder',
+      },
+      {
+        source: '/connections',
+        destination: '/?view=connections',
+      },
     ];
   },
 };

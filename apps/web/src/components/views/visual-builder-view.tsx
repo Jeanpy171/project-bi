@@ -94,6 +94,19 @@ export function VisualBuilderView({
   const [selectedTableId, setSelectedTableId] = useState<string>(
     preselectedTableId || '',
   );
+
+  useEffect(() => {
+    if (preselectedSourceId && preselectedSourceId !== selectedSourceId) {
+      setSelectedSourceId(preselectedSourceId);
+    }
+  }, [preselectedSourceId, selectedSourceId]);
+
+  useEffect(() => {
+    if (preselectedTableId && preselectedTableId !== selectedTableId) {
+      setSelectedTableId(preselectedTableId);
+    }
+  }, [preselectedTableId, selectedTableId]);
+
   const [chartKind, setChartKind] = useState<DashboardCard['chartKind']>('bar_grouped');
   const [isCatalogDrawerOpen, setIsCatalogDrawerOpen] = useState(false);
 

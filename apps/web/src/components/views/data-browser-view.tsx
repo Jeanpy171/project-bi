@@ -24,20 +24,40 @@ import {
 
 interface DataBrowserViewProps {
   readonly dataSources: readonly DataSource[];
+  readonly initialSourceId?: string;
+  readonly initialTableId?: string;
   readonly onOpenBuilderWithTable: (sourceId: string, tableId: string) => void;
   readonly onOpenUploadExcel: () => void;
+  readonly onTableSelected?: (sourceId: string, tableId: string) => void;
 }
 
 export function DataBrowserView({
   dataSources,
+  initialSourceId,
+  initialTableId,
   onOpenBuilderWithTable,
   onOpenUploadExcel,
+  onTableSelected,
 }: DataBrowserViewProps) {
   const [selectedSourceId, setSelectedSourceId] = useState<string>(
-    dataSources[0]?.id || '',
+    initialSourceId || dataSources[0]?.id || '',
   );
-  const [selectedTableId, setSelectedTableId] = useState<string>('');
+  const [selectedTableId, setSelectedTableId] = useState<string>(
+    initialTableId || '',
+  );
   const [filterText, setFilterText] = useState('');
+
+  useEffect(() => {
+    if (initialSourceId && initialSourceId !== selectedSourceId) {
+      setSelectedSourceId(initialSourceId);
+    }
+  }, [initialSourceId, selectedSourceId]);
+
+  useEffect(() => {
+    if (initialTableId && initialTableId !== selectedTableId) {
+      setSelectedTableId(initialTableId);
+    }
+  }, [initialTableId, selectedTableId]);
 
   // Live PostgreSQL query state
   const [liveRows, setLiveRows] = useState<Record<string, unknown>[]>([]);
@@ -127,6 +147,7 @@ export function DataBrowserView({
     setSortDirection('asc');
     setFilterText('');
     setCurrentPage(1);
+    onTableSelected?.(selectedSourceId, tableId);
   };
 
   const handleSelectSource = (sourceId: string) => {
@@ -136,6 +157,7 @@ export function DataBrowserView({
     setSortDirection('asc');
     setFilterText('');
     setCurrentPage(1);
+    onTableSelected?.(sourceId, '');
   };
 
   // Toggle column sorting
