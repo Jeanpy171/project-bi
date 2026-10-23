@@ -318,8 +318,8 @@ export function buildStatementFromActualRows(
   const keys = Object.keys(sample);
 
   const codeKey = keys.find((k) => /c[oó]digo|code/i.test(k));
-  const nameKey = keys.find((k) => /nombre|cuenta|glosa|descrip|concepto/i.test(k) && !/tipo|subtipo/i.test(k));
-  const balanceKey = keys.find((k) => /balance_acumulado|saldo_final|saldo|balance|monto|total|haber_acumulado|debe_acumulado/i.test(k));
+  const nameKey = keys.find((k) => /cuenta|nombre|glosa|descrip|concepto/i.test(k) && !/tipo|subtipo/i.test(k));
+  const balanceKey = keys.find((k) => /saldo_rollup|balance_acumulado|saldo_final|saldo|balance|monto|total|haber_acumulado|debe_acumulado/i.test(k));
   const levelKey = keys.find((k) => /nivel|level/i.test(k));
 
   // If no accounting code found, create a simple dynamic category breakdown
@@ -327,51 +327,88 @@ export function buildStatementFromActualRows(
     return defaultPnlStatementData;
   }
 
-  // Group real rows by root code or accounting class
-  const sectionMap = new Map<string, { title: string; items: FinancialLineItem[] }>();
+  // Store root account balances separately to prevent double-counting
+  const rootBalances = new Map<string, number>();
+  const sectionMap = new Map<string, { title: string; rootChar: string; items: FinancialLineItem[] }>();
+
+  const SECTION_CONFIGS = [
+    { root: '1', title: '1. ACTIVOS' },
+    { root: '2', title: '2. PASIVOS' },
+    { root: '3', title: '3. PATRIMONIO NETO' },
+    { root: '4', title: '4. INGRESOS' },
+    { root: '5', title: '5. COSTOS DE VENTA' },
+    { root: '6', title: '6. GASTOS OPERATIVOS' },
+  ];
 
   rows.forEach((row, idx) => {
     const rawCode = codeKey ? String(row[codeKey] ?? '').trim() : '';
+    const cleanCode = rawCode.replace(/[^0-9a-zA-Z]/g, '');
     const rawName = nameKey ? String(row[nameKey] ?? '').trim() : `Cuenta ${idx + 1}`;
     const rawVal = balanceKey && row[balanceKey] !== undefined ? Number(row[balanceKey]) : 0;
     const numVal = isNaN(rawVal) ? 0 : rawVal;
 
-    // Determine root classification
-    const rootChar = rawCode.charAt(0) || '1';
-    let secTitle = '1. ACTIVOS';
-    if (rootChar === '2') secTitle = '2. PASIVOS';
-    else if (rootChar === '3') secTitle = '3. PATRIMONIO NETO';
-    else if (rootChar === '4') secTitle = '4. INGRESOS';
-    else if (rootChar === '5') secTitle = '5. COSTOS';
-    else if (rootChar === '6') secTitle = '6. GASTOS OPERATIVOS';
-    else if (!/^\d/.test(rootChar)) secTitle = 'CUENTAS GENERALES';
+    const rootChar = cleanCode.charAt(0) || '1';
+
+    // In accounting: Pasivos (2), Patrimonio (3), and Ingresos (4) are credit accounts,
+    // so if they are negative (Debe - Haber), present them as positive magnitude.
+    const displayVal =
+      rootChar === '2' || rootChar === '3' || rootChar === '4'
+        ? Math.abs(numVal)
+        : numVal;
+
+    // Check if this row is the ROOT account itself (e.g. '1', '2', '3')
+    if (cleanCode.length === 1 || cleanCode === rootChar) {
+      rootBalances.set(rootChar, displayVal);
+      // Do NOT add the root row itself as an item inside the section to prevent double-counting
+      return;
+    }
+
+    const cfg = SECTION_CONFIGS.find((c) => c.root === rootChar);
+    const secTitle = cfg ? cfg.title : 'CUENTAS GENERALES';
 
     if (!sectionMap.has(secTitle)) {
-      sectionMap.set(secTitle, { title: secTitle, items: [] });
+      sectionMap.set(secTitle, { title: secTitle, rootChar, items: [] });
     }
 
     const rawLevel = levelKey && row[levelKey] !== undefined ? Number(row[levelKey]) : 1;
-    const indentLevel = Math.max(0, Math.min(2, isNaN(rawLevel) ? (rawCode.length > 2 ? 1 : 0) : rawLevel - 1));
+    // Indent levels: level 2 -> indent 0 (Group), level 3 -> indent 1 (Major), level 4+ -> indent 2 (Detail)
+    const indentLevel = Math.max(
+      0,
+      Math.min(2, isNaN(rawLevel) ? (cleanCode.length > 2 ? 1 : 0) : rawLevel - 2),
+    );
 
     sectionMap.get(secTitle)?.items.push({
       id: `row-${idx}-${rawCode}`,
       label: rawCode ? `${rawCode} - ${rawName}` : rawName,
-      values: { 'Saldo Registrado': numVal },
+      values: { 'Saldo Registrado': displayVal },
       indentLevel,
+      isSubtotal: rawLevel === 2 || cleanCode.length === 2,
     });
   });
 
   const sections: FinancialSection[] = [];
-  sectionMap.forEach((val, secTitle) => {
-    const totalSum = val.items.reduce((acc, it) => acc + (it.values['Saldo Registrado'] || 0), 0);
+  SECTION_CONFIGS.forEach(({ root, title }) => {
+    const dataGroup = sectionMap.get(title);
+    if (!dataGroup || dataGroup.items.length === 0) return;
+
+    // Subtotal: use the root rollup balance if available, otherwise sum top-level items
+    let sectionTotal = rootBalances.get(root);
+    if (sectionTotal === undefined) {
+      const topItems = dataGroup.items.filter((it) => it.indentLevel === 0);
+      sectionTotal = (topItems.length > 0 ? topItems : dataGroup.items).reduce(
+        (acc, it) => acc + (it.values['Saldo Registrado'] || 0),
+        0,
+      );
+    }
+
     sections.push({
-      id: `sec-${secTitle.replace(/\s+/g, '-').toLowerCase()}`,
-      title: secTitle,
-      items: val.items,
+      id: `sec-${title.replace(/\s+/g, '-').toLowerCase()}`,
+      title,
+      items: dataGroup.items,
       subtotal: {
-        id: `sub-${secTitle.replace(/\s+/g, '-').toLowerCase()}`,
-        label: `TOTAL ${secTitle}`,
-        values: { 'Saldo Registrado': totalSum },
+        id: `sub-${title.replace(/\s+/g, '-').toLowerCase()}`,
+        label: `TOTAL ${title}`,
+        values: { 'Saldo Registrado': sectionTotal },
         isMajorTotal: true,
       },
     });
@@ -399,6 +436,9 @@ interface FinancialStatementCardProps {
   readonly rows?: readonly Record<string, unknown>[];
   readonly tableName?: string;
   readonly sourceName?: string;
+  readonly externalAuthoringMode?: boolean;
+  readonly onToggleAuthoringMode?: () => void;
+  readonly defaultReportMode?: 'all' | 'balance' | 'pnl';
 }
 
 export function FinancialStatementCard({
@@ -409,6 +449,9 @@ export function FinancialStatementCard({
   rows,
   tableName,
   sourceName,
+  externalAuthoringMode,
+  onToggleAuthoringMode,
+  defaultReportMode = 'all',
 }: FinancialStatementCardProps) {
   // Initialize from actual rows if provided, or from initialData, or default
   const [data, setData] = useState<FinancialStatementData>(() => {
@@ -432,8 +475,50 @@ export function FinancialStatementCard({
     isDarkMode ? 'corporate_navy' : 'classic_blue',
   );
   const [currencySymbol, setCurrencySymbol] = useState<string>(data.currencySymbol || '$');
-  const [isAuthoringMode, setIsAuthoringMode] = useState(false);
+  const [internalAuthoringMode, setInternalAuthoringMode] = useState(false);
+  const isAuthoringMode =
+    externalAuthoringMode !== undefined ? externalAuthoringMode : internalAuthoringMode;
+  const toggleAuthoringMode = () => {
+    if (onToggleAuthoringMode) {
+      onToggleAuthoringMode();
+    } else {
+      setInternalAuthoringMode((prev) => !prev);
+    }
+  };
+
+  const [reportMode, setReportMode] = useState<'all' | 'balance' | 'pnl'>(defaultReportMode);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  const visibleSections = useMemo(() => {
+    if (reportMode === 'balance') {
+      return data.sections.filter((s) => /activo|pasivo|patrimonio/i.test(s.title));
+    }
+    if (reportMode === 'pnl') {
+      return data.sections.filter((s) => /ingreso|costo|gasto|resultado/i.test(s.title));
+    }
+    return data.sections;
+  }, [data.sections, reportMode]);
+
+  const totalActivos = useMemo(() => {
+    const sec = data.sections.find((s) => /activo/i.test(s.title));
+    const p = data.periods[0] || 'Saldo Registrado';
+    return sec?.subtotal?.values[p] ?? 0;
+  }, [data]);
+
+  const totalPasivos = useMemo(() => {
+    const sec = data.sections.find((s) => /pasivo/i.test(s.title) && !/patrimonio/i.test(s.title));
+    const p = data.periods[0] || 'Saldo Registrado';
+    return sec?.subtotal?.values[p] ?? 0;
+  }, [data]);
+
+  const totalPatrimonio = useMemo(() => {
+    const sec = data.sections.find((s) => /patrimonio/i.test(s.title));
+    const p = data.periods[0] || 'Saldo Registrado';
+    return sec?.subtotal?.values[p] ?? 0;
+  }, [data]);
+
+  const totalPasivoMasPatrimonio = totalPasivos + totalPatrimonio;
+  const isBalanceCuadrado = Math.abs(totalActivos - totalPasivoMasPatrimonio) < 1;
 
   // Section / Row addition modal state
   const [newRowDraft, setNewRowDraft] = useState<{
@@ -650,6 +735,57 @@ export function FinancialStatementCard({
     });
   };
 
+  const handleInsertRowAfter = (sectionId: string, afterItemId: string) => {
+    setData((prev) => {
+      const nextSections = prev.sections.map((sec) => {
+        if (sec.id === sectionId) {
+          const currentItems = sec.items || [];
+          const idx = currentItems.findIndex((it) => it.id === afterItemId);
+          const afterItem = currentItems[idx];
+          const newItem: FinancialLineItem = {
+            id: `row-${Date.now()}`,
+            label: 'Nueva fila personalizada',
+            values: prev.periods.reduce((acc, p) => ({ ...acc, [p]: 0 }), {}),
+            indentLevel: afterItem?.indentLevel ?? 1,
+            isSubtotal: false,
+          };
+          const updatedItems = [...currentItems];
+          if (idx !== -1) {
+            updatedItems.splice(idx + 1, 0, newItem);
+          } else {
+            updatedItems.push(newItem);
+          }
+          return { ...sec, items: updatedItems };
+        }
+        return sec;
+      });
+      const next = { ...prev, sections: nextSections };
+      onDataChange?.(next);
+      return next;
+    });
+  };
+
+  const handleCycleIndent = (sectionId: string, itemId: string) => {
+    setData((prev) => {
+      const nextSections = prev.sections.map((sec) => {
+        if (sec.id === sectionId) {
+          const updatedItems = (sec.items || []).map((it) => {
+            if (it.id === itemId) {
+              const nextIndent = ((it.indentLevel ?? 0) + 1) % 3;
+              return { ...it, indentLevel: nextIndent };
+            }
+            return it;
+          });
+          return { ...sec, items: updatedItems };
+        }
+        return sec;
+      });
+      const next = { ...prev, sections: nextSections };
+      onDataChange?.(next);
+      return next;
+    });
+  };
+
   const handleAddPeriod = () => {
     const newPeriod = window.prompt('Nombre del nuevo período o año (ej: 2027, Octubre 2026):');
     if (!newPeriod || !newPeriod.trim()) return;
@@ -749,102 +885,175 @@ export function FinancialStatementCard({
 
   return (
     <div className="w-full flex flex-col space-y-4 font-sans select-text">
-      {/* Interactive Controls Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-surface-border no-print">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-muted">
-            Paleta:
-          </span>
-          <select
-            value={selectedTheme}
-            onChange={(e) => setSelectedTheme(e.target.value as FinancialTheme)}
-            className="px-2.5 py-1 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
-          >
-            <option value="classic_blue">Clásico Contable (Azul Pizarra)</option>
-            <option value="corporate_navy">Corporativo Marino</option>
-            <option value="emerald_finance">Finanzas Esmeralda</option>
-            <option value="minimal_slate">Minimalista Neutro</option>
-          </select>
-
-          <span className="text-[11px] font-bold uppercase tracking-wider text-muted ml-1">
-            Moneda:
-          </span>
-          <select
-            value={currencySymbol}
-            onChange={(e) => setCurrencySymbol(e.target.value)}
-            className="px-2 py-1 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
-          >
-            <option value="$">$ (Dólar / Pesos)</option>
-            <option value="€">€ (Euro)</option>
-            <option value="S/">S/ (Soles)</option>
-            <option value="Bs.">Bs. (Bolívares)</option>
-            <option value="">Sin símbolo</option>
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Authoring Mode Toggle Button */}
-          <button
-            onClick={() => setIsAuthoringMode((prev) => !prev)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-bold transition-all shadow-xs ${
-              isAuthoringMode
-                ? 'border-primary bg-primary text-white shadow-primary/20'
-                : 'border-surface-border bg-surface text-foreground hover:bg-surface-subtle'
-            }`}
-          >
-            <Edit2 className="h-3.5 w-3.5" />
-            <span>{isAuthoringMode ? 'Terminar Edición' : 'Editar Filas & Estructura'}</span>
-          </button>
-
-          {isAuthoringMode && (
-            <>
+      {/* Interactive Controls Bar - Sticky at Top */}
+      <div className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3 border border-surface-border rounded-2xl shadow-sm space-y-2.5 no-print">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* View Mode Switcher: Balance General vs P&L vs Consolidado */}
+            <div className="flex items-center p-0.5 rounded-lg border border-surface-border bg-surface-subtle text-[11px] font-bold">
               <button
-                onClick={handleAddNewSection}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface border border-surface-border text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
+                type="button"
+                onClick={() => setReportMode('all')}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  reportMode === 'all'
+                    ? 'bg-primary text-white shadow-xs'
+                    : 'text-muted hover:text-foreground'
+                }`}
               >
-                <Plus className="h-3.5 w-3.5 text-primary" />
-                <span>+ Sección</span>
+                Consolidado
               </button>
-
               <button
-                onClick={handleAddPeriod}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface border border-surface-border text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
+                type="button"
+                onClick={() => setReportMode('balance')}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  reportMode === 'balance'
+                    ? 'bg-primary text-white shadow-xs'
+                    : 'text-muted hover:text-foreground'
+                }`}
               >
-                <Plus className="h-3.5 w-3.5 text-accent" />
-                <span>+ Período</span>
+                Balance General
               </button>
+              <button
+                type="button"
+                onClick={() => setReportMode('pnl')}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  reportMode === 'pnl'
+                    ? 'bg-primary text-white shadow-xs'
+                    : 'text-muted hover:text-foreground'
+                }`}
+              >
+                Estado de Resultados
+              </button>
+            </div>
 
-              {rows && rows.length > 0 && (
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted ml-2">
+              Paleta:
+            </span>
+            <select
+              value={selectedTheme}
+              onChange={(e) => setSelectedTheme(e.target.value as FinancialTheme)}
+              className="px-2.5 py-1 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
+            >
+              <option value="classic_blue">Clásico Contable (Azul Pizarra)</option>
+              <option value="corporate_navy">Corporativo Marino</option>
+              <option value="emerald_finance">Finanzas Esmeralda</option>
+              <option value="minimal_slate">Minimalista Neutro</option>
+            </select>
+
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted ml-1">
+              Moneda:
+            </span>
+            <select
+              value={currencySymbol}
+              onChange={(e) => setCurrencySymbol(e.target.value)}
+              className="px-2 py-1 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
+            >
+              <option value="$">$ (Dólar / Pesos)</option>
+              <option value="€">€ (Euro)</option>
+              <option value="S/">S/ (Soles)</option>
+              <option value="Bs.">Bs. (Bolívares)</option>
+              <option value="">Sin símbolo</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Authoring Mode Toggle Button */}
+            <button
+              onClick={toggleAuthoringMode}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-bold transition-all shadow-xs ${
+                isAuthoringMode
+                  ? 'border-primary bg-primary text-white shadow-primary/20'
+                  : 'border-surface-border bg-surface text-foreground hover:bg-surface-subtle'
+              }`}
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+              <span>{isAuthoringMode ? 'Listo / Guardar' : 'Modo Constructor / Editar Filas'}</span>
+            </button>
+
+            {isAuthoringMode && (
+              <>
                 <button
-                  onClick={handleResetToRealData}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-surface-border bg-surface text-xs text-muted hover:text-foreground transition-all"
-                  title="Recalcular desde las filas de la tabla seleccionada"
+                  onClick={handleAddNewSection}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface border border-surface-border text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
                 >
-                  <RefreshCw className="h-3 w-3" />
-                  <span>Restablecer</span>
+                  <Plus className="h-3.5 w-3.5 text-primary" />
+                  <span>+ Sección</span>
                 </button>
-              )}
-            </>
-          )}
 
-          <button
-            onClick={handleExportCsv}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
-            title="Exportar reporte a archivo CSV"
-          >
-            <Download className="h-3.5 w-3.5 text-muted" />
-            <span>CSV</span>
-          </button>
+                <button
+                  onClick={handleAddPeriod}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface border border-surface-border text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
+                >
+                  <Plus className="h-3.5 w-3.5 text-accent" />
+                  <span>+ Período</span>
+                </button>
 
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
-            title="Imprimir o exportar en PDF"
-          >
-            <Printer className="h-3.5 w-3.5 text-primary" />
-            <span>Imprimir</span>
-          </button>
+                {rows && rows.length > 0 && (
+                  <button
+                    onClick={handleResetToRealData}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-surface-border bg-surface text-xs text-muted hover:text-foreground transition-all"
+                    title="Recalcular desde las filas de la tabla seleccionada"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    <span>Restablecer</span>
+                  </button>
+                )}
+              </>
+            )}
+
+            <button
+              onClick={handleExportCsv}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
+              title="Exportar reporte a archivo CSV"
+            >
+              <Download className="h-3.5 w-3.5 text-muted" />
+              <span>CSV</span>
+            </button>
+
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle transition-all shadow-xs"
+              title="Imprimir o exportar en PDF"
+            >
+              <Printer className="h-3.5 w-3.5 text-primary" />
+              <span>Imprimir</span>
+            </button>
+          </div>
         </div>
+
+        {/* Accounting Equation Check Banner for Balance General */}
+        {(reportMode === 'balance' || reportMode === 'all') && totalActivos > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-xl border border-surface-border bg-surface-subtle/70 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-extrabold uppercase tracking-wider text-muted text-[10px]">
+                Ecuación Contable:
+              </span>
+              <span className="font-mono font-bold text-foreground">
+                Activos (${formatFinancialNumber(totalActivos)}) = Pasivos ($
+                {formatFinancialNumber(totalPasivos)}) + Patrimonio ($
+                {formatFinancialNumber(totalPatrimonio)})
+              </span>
+            </div>
+            <div>
+              {isBalanceCuadrado ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>✓ Balance General Cuadrado</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  <span>
+                    Diferencia: $
+                    {formatFinancialNumber(
+                      Math.abs(totalActivos - totalPasivoMasPatrimonio),
+                    )}
+                  </span>
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Financial Statement Sheet Container */}
@@ -988,7 +1197,7 @@ export function FinancialStatementCard({
             </thead>
 
             <tbody>
-              {data.sections.map((section) => {
+              {visibleSections.map((section) => {
                 const isCollapsed = Boolean(collapsedSections[section.id]);
 
                 return (
@@ -1111,13 +1320,35 @@ export function FinancialStatementCard({
                             ))}
                             {isAuthoringMode && (
                               <td className="py-1 px-2 text-right">
-                                <button
-                                  onClick={() => handleDeleteItem(section.id, item.id)}
-                                  className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
-                                  title="Eliminar fila"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
+                                <div className="flex items-center justify-end gap-1">
+                                  {/* Quick Indent Cycle */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCycleIndent(section.id, item.id)}
+                                    className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-surface border border-surface-border text-muted hover:text-foreground"
+                                    title="Cambiar sangría (N0: Grupo, N1: Cuenta, N2: Subcuenta)"
+                                  >
+                                    N{item.indentLevel ?? 0}
+                                  </button>
+                                  {/* Insert Row Below */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInsertRowAfter(section.id, item.id)}
+                                    className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                                    title="Insertar fila debajo de esta"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </button>
+                                  {/* Delete Row */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteItem(section.id, item.id)}
+                                    className="p-1 rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+                                    title="Eliminar fila"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               </td>
                             )}
                           </tr>

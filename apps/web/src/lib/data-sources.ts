@@ -404,13 +404,15 @@ export function detectAccountingColumns(columnNames: readonly string[]): Detecte
   return { codeCol, descCol, debitCol, creditCol, balanceCol };
 }
 
-const KNOWN_ACCOUNT_NAMES: Record<string, string> = {
+export const KNOWN_ACCOUNT_NAMES: Record<string, string> = {
+  // Clases Principales (Nivel 1)
   '1': 'ACTIVOS',
   '2': 'PASIVOS Y PATRIMONIO',
-  '3': 'PATRIMONIO',
-  '4': 'INGRESOS',
-  '5': 'COSTOS',
-  '6': 'GASTOS',
+  '3': 'PATRIMONIO NETO',
+  '4': 'INGRESOS OPERACIONALES',
+  '5': 'COSTOS DE VENTA',
+  '6': 'GASTOS OPERATIVOS',
+  // Grupos Principales (Nivel 2)
   '11': 'Activo Corriente',
   '1.1': 'Activo Corriente',
   '12': 'Activo No Corriente',
@@ -421,12 +423,46 @@ const KNOWN_ACCOUNT_NAMES: Record<string, string> = {
   '2.2': 'Pasivo No Corriente',
   '31': 'Capital Social y Reservas',
   '3.1': 'Capital Social y Reservas',
-  '41': 'Ingresos Operacionales',
-  '4.1': 'Ingresos Operacionales',
-  '51': 'Costos Operacionales',
-  '5.1': 'Costos Operacionales',
-  '61': 'Gastos Operativos',
-  '6.1': 'Gastos Operativos',
+  '41': 'Ingresos Operacionales / Ventas',
+  '4.1': 'Ingresos Operacionales / Ventas',
+  '51': 'Costos Operacionales y Ventas',
+  '5.1': 'Costos Operacionales y Ventas',
+  '61': 'Gastos Operativos y Administrativos',
+  '6.1': 'Gastos Operativos y Administrativos',
+  // Cuentas de Mayor y Subcuentas Estándar (Nivel 3 y 4)
+  '111': 'Caja y Bancos (Efectivo y Equivalentes)',
+  '1.1.01': 'Caja y Bancos',
+  '111001': 'Caja General / Ventas en Efectivo',
+  '112': 'Inversiones Financieras / Depósitos',
+  '113': 'Cuentas por Cobrar Comerciales / Clientes',
+  '1.1.02': 'Cuentas por Cobrar',
+  '121': 'Propiedad, Planta y Equipo / Maquinaria',
+  '1.2.01': 'Propiedades, Planta y Equipo',
+  '122': 'Depreciación Acumulada',
+  '123': 'Inventarios y Existencias',
+  '1.1.03': 'Inventarios',
+  '211': 'Proveedores y Cuentas por Pagar Comerciales',
+  '2.1.01': 'Proveedores / Cuentas por Pagar',
+  '212': 'Préstamos y Obligaciones a Corto Plazo',
+  '2.1.02': 'Préstamos Corto Plazo',
+  '221': 'Deudas y Obligaciones a Largo Plazo',
+  '2.2.01': 'Obligaciones Largo Plazo',
+  '222': 'Provisiones y Pasivos Laborales',
+  '223': 'Cuentas por Pagar Administrativas',
+  '311': 'Aporte de Capital / Capital Social',
+  '3.1.01': 'Capital Social',
+  '312': 'Reservas Legales y Estatutarias',
+  '313': 'Resultados y Utilidades Acumuladas',
+  '3.1.02': 'Utilidades Acumuladas',
+  '411': 'Venta de Bienes y Prestación de Servicios',
+  '4.1.01': 'Ventas de Bienes / Servicios',
+  '412': 'Devoluciones y Descuentos en Ventas',
+  '511': 'Costo de Bienes y Servicios Vendidos',
+  '5.1.01': 'Costo de Ventas',
+  '512': 'Costos Indirectos y Despacho',
+  '611': 'Gastos de Personal y Sueldos',
+  '612': 'Arriendos y Servicios Administrativos',
+  '5.2.01': 'Gastos de Administración',
 };
 
 export function deriveAccountHierarchy(
@@ -522,13 +558,18 @@ export function deriveHierarchicalRollupTable(
 
     const { level, hierarchyType } = deriveAccountHierarchy(code);
 
+    const isActionGlosa =
+      /^(pago|cobro|compra|adquisici[oó]n|salida|entrada|asiento|ajuste|transacci[oó]n|ventas dia|factura|reconocimiento)/i.test(
+        desc,
+      );
+
     if (!accountMap.has(code)) {
       const knownName =
         catalogNames.get(code) ||
         catalogNames.get(cleanCode) ||
         KNOWN_ACCOUNT_NAMES[code] ||
         KNOWN_ACCOUNT_NAMES[cleanCode] ||
-        desc ||
+        (!isActionGlosa && desc ? desc : '') ||
         `Cuenta ${code}`;
 
       accountMap.set(code, {
@@ -547,7 +588,7 @@ export function deriveHierarchicalRollupTable(
     acc.directDebe += debe;
     acc.directHaber += haber;
     acc.directBalance += bal;
-    if (desc && (!acc.name || acc.name.startsWith('Cuenta '))) {
+    if (desc && (!acc.name || acc.name.startsWith('Cuenta ')) && !isActionGlosa) {
       acc.name = desc;
     }
   }

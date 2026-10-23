@@ -34,6 +34,7 @@ import {
   Check,
   CreditCard,
   DollarSign,
+  Edit2,
   Palette,
   Save,
   ShoppingBag,
@@ -95,6 +96,10 @@ export function VisualBuilderView({
   const [customFinancialData, setCustomFinancialData] = useState<
     FinancialStatementData | undefined
   >(undefined);
+  const [financialReportMode, setFinancialReportMode] = useState<
+    'all' | 'balance' | 'pnl'
+  >('all');
+  const [isGlobalAuthoringMode, setIsGlobalAuthoringMode] = useState(false);
 
   // Field assignments & Typography
   const [title, setTitle] = useState('');
@@ -515,76 +520,152 @@ export function VisualBuilderView({
           </div>
         </div>
 
-        {/* Step 2: Asignación de Campos */}
-        <div className="pt-4 border-t border-surface-border space-y-3">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted block mb-1">
-            Paso 2: Asignación de Campos
-          </span>
+        {/* Step 2: Asignación de Campos / Configuración Contable */}
+        {chartKind === 'table_hierarchical' ? (
+          <div className="pt-4 border-t border-surface-border space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary block">
+                Paso 2: Estructura & Mapeo Contable
+              </span>
+              <span className="text-[9px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                Finanzas & P&L
+              </span>
+            </div>
 
-          <div>
-            <span className="block text-[11px] font-medium text-muted mb-1">
-              {chartKind === 'funnel' ? 'Etapa del Embudo' : 'Eje X (Agrupar por / Dimensión)'}
-            </span>
-            <select
-              value={activeXField}
-              onChange={(e) => setXField(e.target.value)}
-              className="w-full rounded-lg border border-surface-border bg-surface-subtle px-2.5 py-1.5 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-            >
-              {availableColumns.map((col) => (
-                <option key={col.name} value={col.name}>
-                  {col.name} ({col.type})
-                </option>
-              ))}
-            </select>
+            {/* Structure Preset: Balance General vs P&L vs Completo */}
+            <div className="space-y-1.5">
+              <span className="block text-[11px] font-semibold text-foreground">
+                Vista de Estado Financiero
+              </span>
+              <div className="grid grid-cols-1 gap-1.5">
+                {[
+                  {
+                    id: 'all' as const,
+                    label: 'Consolidado (Balance + P&L)',
+                    desc: 'Muestra todas las clases contables (1 a 6)',
+                  },
+                  {
+                    id: 'balance' as const,
+                    label: 'Solo Balance General',
+                    desc: 'Activo = Pasivo + Patrimonio (Ecuación)',
+                  },
+                  {
+                    id: 'pnl' as const,
+                    label: 'Solo Estado de Resultados',
+                    desc: 'Ingresos - Costos - Gastos (Utilidad Neta)',
+                  },
+                ].map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setFinancialReportMode(mode.id)}
+                    className={`py-2 px-2.5 rounded-xl text-left border transition-all ${
+                      financialReportMode === mode.id
+                        ? 'border-primary bg-primary/10 text-primary shadow-xs font-bold'
+                        : 'border-surface-border bg-surface-subtle/60 text-muted hover:text-foreground'
+                    }`}
+                  >
+                    <div className="text-[11px] font-bold">{mode.label}</div>
+                    <div className="text-[9px] opacity-75">{mode.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* In-Place Row Builder Action Card */}
+            <div className="p-3 rounded-xl border border-primary/20 bg-primary/5 space-y-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                <Edit2 className="h-3 w-3" />
+                Constructor de Filas y Cuentas
+              </span>
+              <p className="text-[10px] text-muted leading-tight">
+                Podés crear filas a medida, cambiar sangrías (Grupo, Cuenta, Subcuenta) o editar cifras directamente en la tarjeta:
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsGlobalAuthoringMode((prev) => !prev)}
+                className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs ${
+                  isGlobalAuthoringMode
+                    ? 'bg-primary text-white shadow-primary/25'
+                    : 'bg-surface border border-surface-border text-foreground hover:bg-surface-subtle'
+                }`}
+              >
+                <Edit2 className="h-3.5 w-3.5" />
+                <span>{isGlobalAuthoringMode ? 'Listo / Guardar Edición' : '🛠️ Activar Modo Constructor'}</span>
+              </button>
+            </div>
           </div>
+        ) : (
+          <div className="pt-4 border-t border-surface-border space-y-3">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted block mb-1">
+              Paso 2: Asignación de Campos
+            </span>
 
-          <div className="grid grid-cols-2 gap-2">
             <div>
-              <span className="block text-[11px] font-medium text-muted mb-1">Métrica (Eje Y)</span>
+              <span className="block text-[11px] font-medium text-muted mb-1">
+                {chartKind === 'funnel' ? 'Etapa del Embudo' : 'Eje X (Agrupar por / Dimensión)'}
+              </span>
               <select
-                value={activeYField}
-                onChange={(e) => setYField(e.target.value)}
+                value={activeXField}
+                onChange={(e) => setXField(e.target.value)}
                 className="w-full rounded-lg border border-surface-border bg-surface-subtle px-2.5 py-1.5 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
               >
                 {availableColumns.map((col) => (
                   <option key={col.name} value={col.name}>
-                    {col.name}
+                    {col.name} ({col.type})
                   </option>
                 ))}
               </select>
             </div>
 
-            <div>
-              <span className="block text-[11px] font-medium text-muted mb-1">Operación</span>
-              <select
-                value={aggFn}
-                onChange={(e) => setAggFn(e.target.value as typeof aggFn)}
-                className="w-full rounded-lg border border-surface-border bg-surface-subtle px-2.5 py-1.5 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-              >
-                <option value="sum">SUM</option>
-                <option value="count">COUNT</option>
-                <option value="avg">AVG</option>
-                <option value="max">MAX</option>
-                <option value="min">MIN</option>
-              </select>
-            </div>
-          </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="block text-[11px] font-medium text-muted mb-1">Métrica (Eje Y)</span>
+                <select
+                  value={activeYField}
+                  onChange={(e) => setYField(e.target.value)}
+                  className="w-full rounded-lg border border-surface-border bg-surface-subtle px-2.5 py-1.5 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                >
+                  {availableColumns.map((col) => (
+                    <option key={col.name} value={col.name}>
+                      {col.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Conditional Target Field for Gauge */}
-          {chartKind === 'gauge' && (
-            <div>
-              <span className="block text-[11px] font-medium text-muted mb-1">
-                🎯 Meta Objetivo Comercial
-              </span>
-              <input
-                type="number"
-                value={goalValue}
-                onChange={(e) => setGoalValue(Number(e.target.value) || 100000)}
-                className="w-full rounded-lg border border-surface-border bg-surface px-2.5 py-1.5 text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-              />
+              <div>
+                <span className="block text-[11px] font-medium text-muted mb-1">Operación</span>
+                <select
+                  value={aggFn}
+                  onChange={(e) => setAggFn(e.target.value as typeof aggFn)}
+                  className="w-full rounded-lg border border-surface-border bg-surface-subtle px-2.5 py-1.5 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                >
+                  <option value="sum">SUM</option>
+                  <option value="count">COUNT</option>
+                  <option value="avg">AVG</option>
+                  <option value="max">MAX</option>
+                  <option value="min">MIN</option>
+                </select>
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Conditional Target Field for Gauge */}
+            {chartKind === 'gauge' && (
+              <div>
+                <span className="block text-[11px] font-medium text-muted mb-1">
+                  🎯 Meta Objetivo Comercial
+                </span>
+                <input
+                  type="number"
+                  value={goalValue}
+                  onChange={(e) => setGoalValue(Number(e.target.value) || 100000)}
+                  className="w-full rounded-lg border border-surface-border bg-surface px-2.5 py-1.5 text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Step 3: Personalización & Marca (VITALIDAD & CONTROL TOTAL) */}
         <div className="pt-4 border-t border-surface-border space-y-4">
@@ -1131,9 +1212,15 @@ export function VisualBuilderView({
         </div>
 
         {/* Central Visualization Canvas */}
-        <div className="flex-1 p-6 overflow-y-auto flex items-center justify-center bg-slate-100 dark:bg-slate-950">
+        <div
+          className={`flex-1 p-6 overflow-y-auto flex justify-center bg-slate-100 dark:bg-slate-950 ${
+            chartKind === 'table_hierarchical' ? 'items-start' : 'items-center'
+          }`}
+        >
           <div
-            className={`w-full max-w-4xl rounded-3xl p-7 min-h-[440px] flex flex-col justify-between relative overflow-hidden transition-all card-executive ${
+            className={`w-full ${
+              chartKind === 'table_hierarchical' ? 'max-w-6xl' : 'max-w-4xl'
+            } rounded-3xl p-7 min-h-[440px] flex flex-col justify-between relative overflow-hidden transition-all card-executive ${
               cardTheme === 'gradient'
                 ? 'text-white'
                 : cardTheme === 'glass'
@@ -1206,6 +1293,9 @@ export function VisualBuilderView({
                     sourceName={currentSource?.name}
                     initialData={customFinancialData}
                     onDataChange={setCustomFinancialData}
+                    externalAuthoringMode={isGlobalAuthoringMode}
+                    onToggleAuthoringMode={() => setIsGlobalAuthoringMode((p) => !p)}
+                    defaultReportMode={financialReportMode}
                   />
                 </div>
               ) : (
