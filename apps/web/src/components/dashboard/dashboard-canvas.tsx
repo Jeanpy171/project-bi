@@ -18,6 +18,7 @@ import {
 import { CardExpandModal } from './card-expand-modal';
 import { ShareDashboardModal } from './share-dashboard-modal';
 import { ExportPdfModal } from './export-pdf-modal';
+import { DashboardOnboarding } from './dashboard-onboarding';
 import {
   ArrowDown,
   ArrowUp,
@@ -114,6 +115,9 @@ interface DashboardCanvasProps {
   readonly onDeleteCard: (index: number) => void;
   readonly onNavigateToBuilder: () => void;
   readonly isDarkMode: boolean;
+  readonly onOpenConnectionModal?: () => void;
+  readonly onOpenUploadExcel?: () => void;
+  readonly onEnsureDemoSource?: () => void;
 }
 
 const STORAGE_KEY = 'proyecto_bi_dashboard_cards_v8';
@@ -247,6 +251,9 @@ export function DashboardCanvas({
   dynamicCards,
   onNavigateToBuilder,
   isDarkMode,
+  onOpenConnectionModal,
+  onOpenUploadExcel,
+  onEnsureDemoSource,
 }: DashboardCanvasProps) {
   const [doc] = useState<DashboardDocument>(initialDocument);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -434,14 +441,14 @@ export function DashboardCanvas({
     [],
   );
 
-  // Cards State
+  // Cards State: Default to clean canvas unless user explicitly saved cards or loaded demo
   const [cards, setCards] = useState<GridCardItem[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
+        if (saved !== null) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             return parsed.map((item: GridCardItem) => {
               const limits = getContentLimits(item.chartKind);
               return {
@@ -453,11 +460,38 @@ export function DashboardCanvas({
           }
         }
       } catch {
-        // Fallback
+        // Fallback to clean state
       }
     }
-    return defaultCards;
+    // Clean canvas by default
+    return [];
   });
+
+  const handleLoadDemo = () => {
+    onEnsureDemoSource?.();
+    snapshotPositions();
+    setCards(defaultCards);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultCards));
+      } catch {
+        // Ignore
+      }
+    }
+  };
+
+  const handleClearCanvas = () => {
+    snapshotPositions();
+    setCards([]);
+    setIsEditMode(false);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      } catch {
+        // Ignore
+      }
+    }
+  };
 
   // Synchronize incoming dynamicCards from Visual Builder
   useEffect(() => {
@@ -949,14 +983,41 @@ export function DashboardCanvas({
               <Printer className="h-3.5 w-3.5 text-primary" />
               <span>Exportar PDF</span>
             </button>
+
+            {cards.length > 0 && (
+              <button
+                onClick={handleClearCanvas}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-surface-border bg-surface text-xs font-semibold text-muted hover:text-danger hover:border-danger/30 hover:bg-danger/5 transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                title="Vaciar tarjetas para comenzar con un lienzo limpio"
+              >
+                <Trash2 className="h-3.5 w-3.5 text-danger/80" />
+                <span>Limpiar</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleLoadDemo}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-purple-500/30 bg-purple-500/10 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-all duration-200 shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              title="Restaurar el tablero de demostración con datos de retail y finanzas"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Cargar Demo</span>
+            </button>
           </div>
         </div>
 
-      {/* Unified 12-Column Flexible Grid */}
-      <div
-        ref={gridContainerRef}
-        className="grid grid-cols-12 gap-5 w-full relative"
-      >
+      {cards.length === 0 ? (
+        <DashboardOnboarding
+          onOpenConnectionModal={onOpenConnectionModal || (() => {})}
+          onLoadDemo={handleLoadDemo}
+          onOpenUploadExcel={onOpenUploadExcel || (() => {})}
+        />
+      ) : (
+        /* Unified 12-Column Flexible Grid */
+        <div
+          ref={gridContainerRef}
+          className="grid grid-cols-12 gap-5 w-full relative"
+        >
         {cards.map((card, idx) => {
           const colSpanClass = getColSpanClass(card.width);
           const isBeingDragged = draggedCardId === card.id;
@@ -1568,7 +1629,8 @@ export function DashboardCanvas({
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
       </div>
 
       {/* Card Expand Fullscreen Modal with Luxury Zoom-In Transition */}

@@ -1,9 +1,17 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
+import { cors } from 'hono/cors';
 import { healthRoute } from './routes/health.js';
 import { connectionsRoute } from './routes/connections.js';
 import { queriesRoute } from './routes/queries.js';
 
 export const app = new OpenAPIHono();
+
+// Enable CORS for frontend clients
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // Global Error Handler
 app.onError((err, c) => {

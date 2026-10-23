@@ -11,6 +11,7 @@ import { DiagnosticModal } from '../components/connections/diagnostic-modal';
 import { ExcelUploadModal } from '../components/connections/excel-upload-modal';
 import {
   demoPostgresSource,
+  introspectPostgresDataSource,
   type DataSource,
 } from '../lib/data-sources';
 
@@ -24,6 +25,8 @@ const initialDashboardDoc: DashboardDocument = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
+
+const SAVED_CONNECTIONS_KEY = 'proyecto_bi_saved_connections_v1';
 
 export default function HomePage() {
   const [currentView, setCurrentView] = useState<AppView>('dashboards');
@@ -39,6 +42,28 @@ export default function HomePage() {
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Load saved PostgreSQL connections on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(SAVED_CONNECTIONS_KEY);
+      if (raw) {
+        const configs: ConnectionConfig[] = JSON.parse(raw);
+        if (Array.isArray(configs) && configs.length > 0) {
+          configs.forEach(async (cfg) => {
+            const { source } = await introspectPostgresDataSource(cfg);
+            setDataSources((prev) => {
+              if (prev.some((ds) => ds.id === source.id)) return prev;
+              return [source, ...prev];
+            });
+          });
+        }
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
 
   // Synchronize documentElement class whenever isDarkMode state changes
   useEffect(() => {
@@ -57,18 +82,34 @@ export default function HomePage() {
     setDataSources((prev) => [newSource, ...prev]);
   };
 
-  const handleConnectionSaved = (config: ConnectionConfig) => {
-    const customSource: DataSource = {
-      id: config.id,
-      name: `${config.name} (${config.database})`,
-      type: 'postgres',
-      tables: demoPostgresSource.tables.map((t) => ({
-        ...t,
-        id: `tbl-${config.id}-${t.name}`,
-      })),
-    };
+  const handleEnsureDemoSource = () => {
+    setDataSources((prev) => {
+      if (prev.some((ds) => ds.id === demoPostgresSource.id)) return prev;
+      return [...prev, demoPostgresSource];
+    });
+  };
 
-    setDataSources((prev) => [customSource, ...prev]);
+  const handleConnectionSaved = async (config: ConnectionConfig) => {
+    // 1. Introspect live PostgreSQL tables and schema from backend
+    const { source } = await introspectPostgresDataSource(config);
+
+    // 2. Add or replace in state
+    setDataSources((prev) => {
+      const existing = prev.filter((ds) => ds.id !== source.id);
+      return [source, ...existing];
+    });
+
+    // 3. Persist connection configuration in localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(SAVED_CONNECTIONS_KEY);
+        const list: ConnectionConfig[] = raw ? JSON.parse(raw) : [];
+        const nextList = [config, ...list.filter((c) => c.id !== config.id)];
+        localStorage.setItem(SAVED_CONNECTIONS_KEY, JSON.stringify(nextList));
+      } catch {
+        // Ignore
+      }
+    }
   };
 
   const handleOpenBuilderWithTable = (sourceId: string, tableId: string) => {
@@ -112,6 +153,9 @@ export default function HomePage() {
             onDeleteCard={handleDeleteCard}
             onNavigateToBuilder={() => setCurrentView('builder')}
             isDarkMode={isDarkMode}
+            onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
+            onOpenUploadExcel={() => setIsExcelModalOpen(true)}
+            onEnsureDemoSource={handleEnsureDemoSource}
           />
         )}
 

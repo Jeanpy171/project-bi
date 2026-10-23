@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DashboardCard } from '@bi/contracts';
 import {
   aggregateData,
+  fetchPostgresTableRows,
   type DataSource,
   type DataTable,
 } from '../../lib/data-sources';
@@ -169,13 +170,43 @@ export function VisualBuilderView({
     title ||
     `${activeCatalogItem.title.split(' ')[0]} de ${activeYField || 'Métrica'} por ${activeXField || 'Dimensión'}`;
 
+  // Live PostgreSQL rows state for real database querying
+  const [liveRows, setLiveRows] = useState<Record<string, unknown>[]>([]);
+  const [isFetchingLive, setIsFetchingLive] = useState(false);
+
+  useEffect(() => {
+    if (currentSource?.connectionConfig && currentTable?.schema && currentTable?.tableName) {
+      setIsFetchingLive(true);
+      fetchPostgresTableRows(
+        currentSource.connectionConfig,
+        currentTable.schema,
+        currentTable.tableName,
+        250,
+      ).then((res) => {
+        setIsFetchingLive(false);
+        if (!res.error) {
+          setLiveRows(res.rows);
+        }
+      });
+    } else {
+      setLiveRows([]);
+    }
+  }, [currentSource?.id, currentTable?.id]);
+
+  const activeRows = useMemo(() => {
+    if (currentSource?.connectionConfig) {
+      return liveRows;
+    }
+    return currentTable?.rows || [];
+  }, [currentSource, currentTable, liveRows]);
+
   // Execute Real Aggregation
   const aggResult = useMemo(() => {
-    if (!currentTable || currentTable.rows.length === 0 || !activeXField || !activeYField) {
+    if (!currentTable || activeRows.length === 0 || !activeXField || !activeYField) {
       return { categories: [], values: [], totalSum: 0 };
     }
-    return aggregateData(currentTable.rows, activeXField, activeYField, aggFn);
-  }, [currentTable, activeXField, activeYField, aggFn]);
+    return aggregateData(activeRows, activeXField, activeYField, aggFn);
+  }, [currentTable, activeRows, activeXField, activeYField, aggFn]);
 
   // Build ECharts Configuration across 9 Chart Types with Direct Color Sync
   const chartOption = useMemo<echarts.EChartsOption>(() => {
@@ -473,7 +504,7 @@ export function VisualBuilderView({
               >
                 {currentSource?.tables.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name} ({t.rows.length} filas)
+                    {t.name} ({currentSource?.connectionConfig ? (t.rowCountEstimate ? `~${t.rowCountEstimate} filas` : 'En Vivo') : `${t.rows.length} filas`})
                   </option>
                 ))}
               </select>
@@ -1060,6 +1091,12 @@ export function VisualBuilderView({
             <span className="text-xs text-muted font-medium truncate">{currentSource?.name} &gt;</span>
             <span className="text-xs text-muted font-medium truncate">{currentTable?.name} &gt;</span>
             <h2 className="text-sm font-bold text-foreground truncate">{computedTitle}</h2>
+            {currentSource?.connectionConfig && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-success/10 text-success border border-success/20 shrink-0">
+                <span className={`h-1.5 w-1.5 rounded-full bg-success ${isFetchingLive ? 'animate-ping' : 'animate-pulse'}`} />
+                <span>{isFetchingLive ? 'Consultando...' : 'PostgreSQL En Vivo'}</span>
+              </span>
+            )}
             {badgeText && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-surface-subtle text-foreground border border-surface-border shrink-0">
                 {badgeText}

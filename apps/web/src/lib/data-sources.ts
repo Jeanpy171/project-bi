@@ -1,15 +1,21 @@
 import * as XLSX from 'xlsx';
+import type { ConnectionConfig } from '@bi/contracts';
 
 export interface DataColumn {
   readonly name: string;
   readonly type: 'string' | 'number' | 'date';
+  readonly rawType?: string;
 }
 
 export interface DataTable {
   readonly id: string;
   readonly name: string;
+  readonly schema?: string;
+  readonly tableName?: string;
+  readonly rowCountEstimate?: number;
   readonly columns: readonly DataColumn[];
   readonly rows: readonly Record<string, unknown>[];
+  readonly isLive?: boolean;
 }
 
 export interface DataSource {
@@ -17,6 +23,172 @@ export interface DataSource {
   readonly name: string;
   readonly type: 'postgres' | 'excel' | 'csv';
   readonly tables: readonly DataTable[];
+  readonly connectionConfig?: ConnectionConfig;
+  readonly isConnected?: boolean;
+}
+
+export const mapPostgresTypeToCategory = (rawType: string): 'string' | 'number' | 'date' => {
+  const t = rawType.toLowerCase();
+  if (
+    t.includes('int') ||
+    t.includes('numeric') ||
+    t.includes('decimal') ||
+    t.includes('double') ||
+    t.includes('real') ||
+    t.includes('float') ||
+    t.includes('money')
+  ) {
+    return 'number';
+  }
+  if (t.includes('date') || t.includes('time') || t.includes('timestamp')) {
+    return 'date';
+  }
+  return 'string';
+};
+
+/**
+ * Calls the API to introspect a live PostgreSQL database and create a DataSource with real tables.
+ */
+export async function introspectPostgresDataSource(
+  config: ConnectionConfig,
+): Promise<{ source: DataSource; error?: string }> {
+  try {
+    const res = await fetch('/api/connections/introspect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      return {
+        source: {
+          id: config.id,
+          name: `${config.name} (${config.database})`,
+          type: 'postgres',
+          tables: [],
+          connectionConfig: config,
+          isConnected: false,
+        },
+        error: errJson?.error?.message || `Error HTTP ${res.status} al introspeccionar la base de datos.`,
+      };
+    }
+
+    const payload = (await res.json()) as {
+      data: {
+        tables: Array<{
+          schema: string;
+          name: string;
+          rowCountEstimate?: number;
+          columns: Array<{
+            name: string;
+            dataType: string;
+            isNullable: boolean;
+            isPrimaryKey: boolean;
+          }>;
+        }>;
+      };
+    };
+
+    const introspectedTables: DataTable[] = payload.data.tables.map((tbl) => ({
+      id: `${config.id}:${tbl.schema}.${tbl.name}`,
+      name: `${tbl.schema !== 'public' ? `${tbl.schema}.` : ''}${tbl.name}`,
+      schema: tbl.schema,
+      tableName: tbl.name,
+      rowCountEstimate: tbl.rowCountEstimate,
+      columns: tbl.columns.map((c) => ({
+        name: c.name,
+        type: mapPostgresTypeToCategory(c.dataType),
+        rawType: c.dataType,
+      })),
+      rows: [],
+      isLive: true,
+    }));
+
+    const source: DataSource = {
+      id: config.id,
+      name: `${config.name} (${config.database})`,
+      type: 'postgres',
+      tables: introspectedTables,
+      connectionConfig: config,
+      isConnected: true,
+    };
+
+    return { source };
+  } catch (err) {
+    return {
+      source: {
+        id: config.id,
+        name: `${config.name} (${config.database})`,
+        type: 'postgres',
+        tables: [],
+        connectionConfig: config,
+        isConnected: false,
+      },
+      error: err instanceof Error ? err.message : 'Fallo de conexión de red al servidor API.',
+    };
+  }
+}
+
+/**
+ * Runs a safe read-only SELECT query against a PostgreSQL database to fetch live rows.
+ */
+export async function fetchPostgresTableRows(
+  config: ConnectionConfig,
+  schema: string,
+  tableName: string,
+  limit = 100,
+): Promise<{ rows: Record<string, unknown>[]; executionMs: number; error?: string }> {
+  try {
+    const sql = `SELECT * FROM "${schema}"."${tableName}" LIMIT ${limit}`;
+    const res = await fetch('/api/queries/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        connection: config,
+        sql,
+        limit,
+        timeoutMs: 10000,
+      }),
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      return {
+        rows: [],
+        executionMs: 0,
+        error: errJson?.error?.message || 'Error al consultar la tabla en PostgreSQL.',
+      };
+    }
+
+    const payload = (await res.json()) as {
+      data: {
+        columns: Array<{ name: string; type: string }>;
+        rows: unknown[][];
+        rowCount: number;
+        executionDurationMs: number;
+      };
+    };
+
+    const rows: Record<string, unknown>[] = payload.data.rows.map((rowArr) => {
+      const rowObj: Record<string, unknown> = {};
+      payload.data.columns.forEach((col, idx) => {
+        rowObj[col.name] = rowArr[idx];
+      });
+      return rowObj;
+    });
+
+    return {
+      rows,
+      executionMs: payload.data.executionDurationMs,
+    };
+  } catch (err) {
+    return {
+      rows: [],
+      executionMs: 0,
+      error: err instanceof Error ? err.message : 'Error inesperado al conectar con la API.',
+    };
+  }
 }
 
 // 1. Built-in PostgreSQL Demo Tables (matching infra/seeds/init-demo.sql)

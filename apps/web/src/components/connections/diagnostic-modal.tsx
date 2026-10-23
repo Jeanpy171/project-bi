@@ -36,6 +36,7 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [report, setReport] = useState<DiagnosticReport | null>(null);
 
   if (!isOpen) return null;
@@ -45,13 +46,21 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
     setReport(null);
 
     try {
-      const res = await fetch('http://localhost:3001/api/connections/test', {
+      let res = await fetch('/api/connections/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
-      });
+      }).catch(() => null);
 
-      if (res.ok) {
+      if (!res || !res.ok) {
+        res = await fetch('http://localhost:3001/api/connections/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
         const body = (await res.json()) as { data: DiagnosticReport };
         setReport(body.data);
       } else {
@@ -120,9 +129,14 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
     }
   };
 
-  const handleSaveAndUse = () => {
-    onConnectionSaved?.(config);
-    onClose();
+  const handleSaveAndUse = async () => {
+    setIsSaving(true);
+    try {
+      await onConnectionSaved?.(config);
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -302,10 +316,20 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
             </button>
             <button
               onClick={handleSaveAndUse}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary-hover transition-all shadow-sm"
+              disabled={isSaving}
+              className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary-hover transition-all shadow-sm disabled:opacity-50"
             >
-              <Check className="h-4 w-4" />
-              Guardar y Usar Conexión
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Introspeccionando...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  <span>Guardar y Usar Conexión</span>
+                </>
+              )}
             </button>
           </div>
         </div>

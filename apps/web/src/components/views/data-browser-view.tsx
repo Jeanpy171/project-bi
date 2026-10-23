@@ -1,9 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import type { DataSource, DataTable } from '../../lib/data-sources';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  fetchPostgresTableRows,
+  type DataSource,
+  type DataTable,
+} from '../../lib/data-sources';
 import {
   BarChart2,
+  Loader2,
+  RefreshCw,
   Search,
   Table as TableIcon,
 } from 'lucide-react';
@@ -25,6 +31,12 @@ export function DataBrowserView({
   const [selectedTableId, setSelectedTableId] = useState<string>('');
   const [filterText, setFilterText] = useState('');
 
+  // Live PostgreSQL query state
+  const [liveRows, setLiveRows] = useState<Record<string, unknown>[]>([]);
+  const [isFetchingLive, setIsFetchingLive] = useState(false);
+  const [liveExecutionMs, setLiveExecutionMs] = useState<number | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
   const currentSource = useMemo(() => {
     return dataSources.find((ds) => ds.id === selectedSourceId) || dataSources[0];
   }, [dataSources, selectedSourceId]);
@@ -37,15 +49,50 @@ export function DataBrowserView({
     );
   }, [currentSource, selectedTableId]);
 
+  const loadLiveTableData = async () => {
+    if (currentSource?.connectionConfig && currentTable?.schema && currentTable?.tableName) {
+      setIsFetchingLive(true);
+      setLiveError(null);
+      const res = await fetchPostgresTableRows(
+        currentSource.connectionConfig,
+        currentTable.schema,
+        currentTable.tableName,
+        100,
+      );
+      setIsFetchingLive(false);
+      if (res.error) {
+        setLiveError(res.error);
+      } else {
+        setLiveRows(res.rows);
+        setLiveExecutionMs(res.executionMs);
+      }
+    } else {
+      setLiveRows([]);
+      setLiveExecutionMs(null);
+      setLiveError(null);
+    }
+  };
+
+  useEffect(() => {
+    loadLiveTableData();
+  }, [currentSource?.id, currentTable?.id]);
+
+  const activeRows = useMemo(() => {
+    if (currentSource?.connectionConfig) {
+      return liveRows;
+    }
+    return currentTable?.rows || [];
+  }, [currentSource, currentTable, liveRows]);
+
   const filteredRows = useMemo(() => {
-    if (!currentTable) return [];
-    if (!filterText.trim()) return currentTable.rows;
+    if (activeRows.length === 0) return [];
+    if (!filterText.trim()) return activeRows;
 
     const lower = filterText.toLowerCase();
-    return currentTable.rows.filter((row) =>
+    return activeRows.filter((row) =>
       Object.values(row).some((val) => String(val).toLowerCase().includes(lower)),
     );
-  }, [currentTable, filterText]);
+  }, [activeRows, filterText]);
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
@@ -120,13 +167,31 @@ export function DataBrowserView({
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted font-medium">{currentSource?.name} &gt;</span>
               <h2 className="text-base font-bold text-foreground">{currentTable?.name}</h2>
+              {currentSource?.connectionConfig && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-success/10 text-success border border-success/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                  <span>En Vivo {liveExecutionMs !== null ? `(${liveExecutionMs}ms)` : ''}</span>
+                </span>
+              )}
               <span className="text-xs text-muted font-normal">
-                ({filteredRows.length} de {currentTable?.rows.length || 0} filas)
+                ({filteredRows.length} {currentSource?.connectionConfig ? 'filas cargadas' : `de ${currentTable?.rows.length || 0} filas`})
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2.5">
+            {currentSource?.connectionConfig && (
+              <button
+                onClick={loadLiveTableData}
+                disabled={isFetchingLive}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle shadow-sm transition-all disabled:opacity-50"
+                title="Volver a consultar la base de datos PostgreSQL"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isFetchingLive ? 'animate-spin text-primary' : ''}`} />
+                <span>Refrescar</span>
+              </button>
+            )}
+
             <div className="relative">
               <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-muted pointer-events-none" />
               <input
@@ -172,7 +237,37 @@ export function DataBrowserView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border">
-                {filteredRows.map((row, idx) => (
+                {isFetchingLive ? (
+                  <tr>
+                    <td colSpan={(currentTable?.columns.length || 0) + 1} className="py-12 text-center text-muted">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        <span className="text-xs font-semibold">Consultando base de datos PostgreSQL en vivo...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : liveError ? (
+                  <tr>
+                    <td colSpan={(currentTable?.columns.length || 0) + 1} className="py-8 text-center text-danger">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <span className="text-xs font-semibold">{liveError}</span>
+                        <button
+                          onClick={loadLiveTableData}
+                          className="px-3 py-1 text-xs font-bold rounded-lg border border-danger/30 bg-danger/10 text-danger hover:bg-danger/20 transition-all"
+                        >
+                          Reintentar Consulta
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={(currentTable?.columns.length || 0) + 1} className="py-8 text-center text-muted text-xs">
+                      No se encontraron registros en esta tabla.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRows.map((row, idx) => (
                   <tr
                     key={idx}
                     className="hover:bg-primary/[0.02] transition-colors text-foreground font-normal"
@@ -195,7 +290,7 @@ export function DataBrowserView({
                       );
                     })}
                   </tr>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>

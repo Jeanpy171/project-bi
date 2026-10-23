@@ -130,7 +130,9 @@ export function ConnectionsView({
                         >
                           <TableIcon className="h-3 w-3 text-muted" />
                           <span>{tbl.name}</span>
-                          <span className="text-[10px] text-muted font-normal">({tbl.rows.length})</span>
+                          <span className="text-[10px] text-muted font-normal">
+                            ({ds.connectionConfig ? (tbl.rowCountEstimate ? `~${tbl.rowCountEstimate}` : 'Live') : tbl.rows.length})
+                          </span>
                         </button>
                       ))}
                     </div>
