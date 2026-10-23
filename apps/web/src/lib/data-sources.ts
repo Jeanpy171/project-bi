@@ -130,18 +130,43 @@ export async function introspectPostgresDataSource(
   }
 }
 
+export interface FetchPostgresTableOptions {
+  readonly limit?: number;
+  readonly offset?: number;
+  readonly sortColumn?: string | null;
+  readonly sortDirection?: 'asc' | 'desc';
+  readonly filterText?: string;
+}
+
 /**
- * Runs a safe read-only SELECT query against a PostgreSQL database to fetch live rows.
+ * Runs a safe read-only SELECT query against a PostgreSQL database to fetch live rows with pagination and sorting.
  */
 export async function fetchPostgresTableRows(
   config: ConnectionConfig,
   schema: string,
   tableName: string,
-  limit = 100,
-): Promise<{ rows: Record<string, unknown>[]; totalRows?: number; executionMs: number; error?: string }> {
+  options: FetchPostgresTableOptions | number = {},
+): Promise<{ rows: Record<string, unknown>[]; totalRows: number; executionMs: number; error?: string }> {
   try {
-    const sql = `SELECT * FROM "${schema}"."${tableName}" LIMIT ${limit}`;
-    const countSql = `SELECT count(*)::bigint as total FROM "${schema}"."${tableName}"`;
+    const opts: FetchPostgresTableOptions = typeof options === 'number' ? { limit: options } : options;
+    const { limit = 25, offset = 0, sortColumn, sortDirection = 'asc', filterText } = opts;
+
+    let orderClause = '';
+    if (sortColumn) {
+      const cleanCol = sortColumn.replace(/[^a-zA-Z0-9_]/g, '');
+      if (cleanCol) {
+        orderClause = ` ORDER BY "${cleanCol}" ${sortDirection === 'desc' ? 'DESC' : 'ASC'}`;
+      }
+    }
+
+    let whereClause = '';
+    if (filterText && filterText.trim()) {
+      const escaped = filterText.replace(/'/g, "''").trim();
+      whereClause = ` WHERE CAST(t.* AS TEXT) ILIKE '%${escaped}%'`;
+    }
+
+    const sql = `SELECT * FROM "${schema}"."${tableName}" t${whereClause}${orderClause} LIMIT ${limit} OFFSET ${offset}`;
+    const countSql = `SELECT count(*)::bigint as total FROM "${schema}"."${tableName}" t${whereClause}`;
 
     const [dataRes, countRes] = await Promise.all([
       fetch('/api/queries/run', {
@@ -170,6 +195,7 @@ export async function fetchPostgresTableRows(
       const errJson = await dataRes.json().catch(() => ({}));
       return {
         rows: [],
+        totalRows: 0,
         executionMs: 0,
         error: errJson?.error?.message || 'Error al consultar la tabla en PostgreSQL.',
       };
@@ -184,7 +210,7 @@ export async function fetchPostgresTableRows(
       };
     };
 
-    let totalRows: number | undefined;
+    let totalRows = payload.data.rowCount;
     if (countRes && countRes.ok) {
       const countPayload = (await countRes.json().catch(() => null)) as {
         data?: { rows?: unknown[][] };
@@ -211,6 +237,7 @@ export async function fetchPostgresTableRows(
   } catch (err) {
     return {
       rows: [],
+      totalRows: 0,
       executionMs: 0,
       error: err instanceof Error ? err.message : 'Error inesperado al conectar con la API.',
     };

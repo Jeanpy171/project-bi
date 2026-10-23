@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchPostgresTableRows,
   type DataSource,
@@ -45,7 +45,6 @@ export function DataBrowserView({
   const [isFetchingLive, setIsFetchingLive] = useState(false);
   const [liveExecutionMs, setLiveExecutionMs] = useState<number | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
-  const [liveQueryLimit, setLiveQueryLimit] = useState<number>(100);
 
   // Sorting & Pagination state
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -65,7 +64,10 @@ export function DataBrowserView({
     );
   }, [currentSource, selectedTableId]);
 
-  const loadLiveTableData = async () => {
+  const isLive = Boolean(currentSource?.connectionConfig);
+
+  // Fetch live table data from PostgreSQL with server-side pagination, sorting, and filtering
+  const loadLiveTableData = useCallback(async () => {
     if (currentSource?.connectionConfig && currentTable?.schema && currentTable?.tableName) {
       setIsFetchingLive(true);
       setLiveError(null);
@@ -73,14 +75,20 @@ export function DataBrowserView({
         currentSource.connectionConfig,
         currentTable.schema,
         currentTable.tableName,
-        liveQueryLimit,
+        {
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
+          sortColumn,
+          sortDirection,
+          filterText,
+        },
       );
       setIsFetchingLive(false);
       if (res.error) {
         setLiveError(res.error);
       } else {
         setLiveRows(res.rows);
-        setLiveTotalRows(res.totalRows ?? null);
+        setLiveTotalRows(res.totalRows);
         setLiveExecutionMs(res.executionMs);
       }
     } else {
@@ -89,37 +97,82 @@ export function DataBrowserView({
       setLiveExecutionMs(null);
       setLiveError(null);
     }
+  }, [
+    currentSource?.connectionConfig,
+    currentTable?.schema,
+    currentTable?.tableName,
+    pageSize,
+    currentPage,
+    sortColumn,
+    sortDirection,
+    filterText,
+  ]);
+
+  // Load data whenever table, page, sort, or filter changes
+  useEffect(() => {
+    if (isLive) {
+      void loadLiveTableData();
+    }
+  }, [isLive, loadLiveTableData]);
+
+  // Reset to page 1 whenever user switches source, table, changes filter text, or alters page size
+  const handleFilterChange = (val: string) => {
+    setFilterText(val);
+    setCurrentPage(1);
   };
 
-  useEffect(() => {
-    loadLiveTableData();
-  }, [currentSource?.id, currentTable?.id, liveQueryLimit]);
-
-  // Reset pagination when source, table, filter, or page size changes
-  useEffect(() => {
+  const handleSelectTable = (tableId: string) => {
+    setSelectedTableId(tableId);
+    setSortColumn(null);
+    setSortDirection('asc');
+    setFilterText('');
     setCurrentPage(1);
-  }, [selectedSourceId, selectedTableId, filterText, pageSize]);
+  };
 
-  const activeRows = useMemo(() => {
-    if (currentSource?.connectionConfig) {
-      return liveRows;
+  const handleSelectSource = (sourceId: string) => {
+    setSelectedSourceId(sourceId);
+    setSelectedTableId('');
+    setSortColumn(null);
+    setSortDirection('asc');
+    setFilterText('');
+    setCurrentPage(1);
+  };
+
+  // Toggle column sorting
+  const handleToggleSort = (columnName: string) => {
+    setCurrentPage(1);
+    if (sortColumn === columnName) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else {
+        setSortColumn(null);
+        setSortDirection('asc');
+      }
+    } else {
+      setSortColumn(columnName);
+      setSortDirection('asc');
     }
-    return currentTable?.rows || [];
-  }, [currentSource, currentTable, liveRows]);
+  };
 
-  const filteredRows = useMemo(() => {
-    if (activeRows.length === 0) return [];
-    if (!filterText.trim()) return activeRows;
+  // --- Client-Side processing for offline Excel / CSV tables ---
+  const clientRows = useMemo(() => {
+    if (isLive) return [];
+    return currentTable?.rows || [];
+  }, [isLive, currentTable]);
+
+  const clientFilteredRows = useMemo(() => {
+    if (isLive || clientRows.length === 0) return [];
+    if (!filterText.trim()) return clientRows;
 
     const lower = filterText.toLowerCase();
-    return activeRows.filter((row) =>
+    return clientRows.filter((row) =>
       Object.values(row).some((val) => String(val).toLowerCase().includes(lower)),
     );
-  }, [activeRows, filterText]);
+  }, [isLive, clientRows, filterText]);
 
-  // Sort filtered rows
-  const processedRows = useMemo(() => {
-    const rows = [...filteredRows];
+  const clientSortedRows = useMemo(() => {
+    if (isLive) return [];
+    const rows = [...clientFilteredRows];
 
     if (sortColumn) {
       rows.sort((a, b) => {
@@ -144,36 +197,33 @@ export function DataBrowserView({
     }
 
     return rows;
-  }, [filteredRows, sortColumn, sortDirection]);
+  }, [isLive, clientFilteredRows, sortColumn, sortDirection]);
 
-  // Pagination slicing
-  const totalPages = Math.max(1, Math.ceil(processedRows.length / pageSize));
+  // --- Total records, total pages, and active visible rows ---
+  const totalRecordCount = useMemo(() => {
+    if (isLive) {
+      return liveTotalRows ?? currentTable?.rowCountEstimate ?? 0;
+    }
+    return clientFilteredRows.length;
+  }, [isLive, liveTotalRows, currentTable?.rowCountEstimate, clientFilteredRows.length]);
+
+  const totalPages = Math.max(1, Math.ceil(totalRecordCount / pageSize));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
 
-  const paginatedRows = useMemo(() => {
-    const start = (safeCurrentPage - 1) * pageSize;
-    return processedRows.slice(start, start + pageSize);
-  }, [processedRows, safeCurrentPage, pageSize]);
-
-  const handleToggleSort = (columnName: string) => {
-    if (sortColumn === columnName) {
-      if (sortDirection === 'asc') {
-        setSortDirection('desc');
-      } else {
-        setSortColumn(null);
-        setSortDirection('asc');
-      }
-    } else {
-      setSortColumn(columnName);
-      setSortDirection('asc');
+  const displayRows = useMemo(() => {
+    if (isLive) {
+      return liveRows;
     }
-  };
+    const start = (safeCurrentPage - 1) * pageSize;
+    return clientSortedRows.slice(start, start + pageSize);
+  }, [isLive, liveRows, clientSortedRows, safeCurrentPage, pageSize]);
 
+  // Export CSV
   const handleExportCsv = () => {
-    if (!currentTable || processedRows.length === 0) return;
+    if (!currentTable || displayRows.length === 0) return;
     const colNames = currentTable.columns.map((c) => c.name);
     const headerLine = colNames.join(',');
-    const rowLines = processedRows.map((r) =>
+    const rowLines = displayRows.map((r) =>
       colNames
         .map((c) => {
           const val = r[c] ?? '';
@@ -203,10 +253,7 @@ export function DataBrowserView({
           </label>
           <select
             value={currentSource?.id || ''}
-            onChange={(e) => {
-              setSelectedSourceId(e.target.value);
-              setSelectedTableId('');
-            }}
+            onChange={(e) => handleSelectSource(e.target.value)}
             className="w-full rounded-lg border border-surface-border bg-surface-subtle px-2.5 py-1.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
           >
             {dataSources.map((ds) => (
@@ -238,7 +285,7 @@ export function DataBrowserView({
             return (
               <button
                 key={table.id}
-                onClick={() => setSelectedTableId(table.id)}
+                onClick={() => handleSelectTable(table.id)}
                 className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-all ${
                   isActive
                     ? 'bg-primary/10 text-primary font-bold shadow-sm'
@@ -268,46 +315,30 @@ export function DataBrowserView({
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted font-medium">{currentSource?.name} &gt;</span>
               <h2 className="text-base font-bold text-foreground">{currentTable?.name}</h2>
-              {currentSource?.connectionConfig && (
+              {isLive && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-success/10 text-success border border-success/20">
                   <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
                   <span>En Vivo {liveExecutionMs !== null ? `(${liveExecutionMs}ms)` : ''}</span>
                 </span>
               )}
               <span className="text-xs text-muted font-normal">
-                {currentSource?.connectionConfig
-                  ? `(Cargadas ${activeRows.length} de ${(liveTotalRows ?? currentTable?.rowCountEstimate ?? activeRows.length).toLocaleString()} filas en base de datos)`
-                  : `(${filteredRows.length} de ${currentTable?.rows.length || 0} filas)`}
+                ({totalRecordCount.toLocaleString()} registros en total)
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Live PostgreSQL Query Limit Selector */}
-            {currentSource?.connectionConfig && (
-              <div className="flex items-center gap-1.5 bg-surface-subtle border border-surface-border rounded-lg px-2 py-1 text-xs">
-                <span className="text-[11px] text-muted">Límite:</span>
-                <select
-                  value={liveQueryLimit}
-                  onChange={(e) => setLiveQueryLimit(Number(e.target.value))}
-                  className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
-                >
-                  <option value={50}>50 filas</option>
-                  <option value={100}>100 filas</option>
-                  <option value={250}>250 filas</option>
-                  <option value={500}>500 filas</option>
-                  <option value={1000}>1000 filas</option>
-                  <option value={5000}>Hasta 5000 filas (Todas)</option>
-                </select>
-                <button
-                  onClick={loadLiveTableData}
-                  disabled={isFetchingLive}
-                  className="p-1 text-muted hover:text-foreground transition-colors disabled:opacity-50"
-                  title="Refrescar consulta con este límite"
-                >
-                  <RefreshCw className={`h-3 w-3 ${isFetchingLive ? 'animate-spin text-primary' : ''}`} />
-                </button>
-              </div>
+            {/* Live PostgreSQL Refresh Button */}
+            {isLive && (
+              <button
+                onClick={loadLiveTableData}
+                disabled={isFetchingLive}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-border bg-surface text-xs font-semibold text-foreground hover:bg-surface-subtle shadow-sm transition-all disabled:opacity-50"
+                title="Volver a consultar la base de datos PostgreSQL en vivo"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isFetchingLive ? 'animate-spin text-primary' : ''}`} />
+                <span>Refrescar</span>
+              </button>
             )}
 
             {/* Filter Input */}
@@ -316,9 +347,9 @@ export function DataBrowserView({
               <input
                 type="text"
                 value={filterText}
-                onChange={(e) => setFilterText(e.target.value)}
+                onChange={(e) => handleFilterChange(e.target.value)}
                 placeholder="Filtrar datos..."
-                className="w-44 pl-8 pr-3 py-1.5 rounded-lg border border-surface-border bg-surface text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                className="w-48 pl-8 pr-3 py-1.5 rounded-lg border border-surface-border bg-surface text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
               />
             </div>
 
@@ -353,7 +384,7 @@ export function DataBrowserView({
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-surface-subtle border-b border-surface-border text-foreground font-bold sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="py-2.5 px-3 text-muted w-12 text-center font-normal">#</th>
+                  <th className="py-2.5 px-3 text-muted w-14 text-center font-normal">#</th>
                   {currentTable?.columns.map((col) => {
                     const isSorted = sortColumn === col.name;
                     return (
@@ -393,7 +424,9 @@ export function DataBrowserView({
                     <td colSpan={(currentTable?.columns.length || 0) + 1} className="py-12 text-center text-muted">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                        <span className="text-xs font-semibold">Consultando base de datos PostgreSQL en vivo...</span>
+                        <span className="text-xs font-semibold">
+                          Consultando página {safeCurrentPage} de PostgreSQL en vivo...
+                        </span>
                       </div>
                     </td>
                   </tr>
@@ -411,14 +444,14 @@ export function DataBrowserView({
                       </div>
                     </td>
                   </tr>
-                ) : paginatedRows.length === 0 ? (
+                ) : displayRows.length === 0 ? (
                   <tr>
                     <td colSpan={(currentTable?.columns.length || 0) + 1} className="py-8 text-center text-muted text-xs">
                       No se encontraron registros en esta tabla.
                     </td>
                   </tr>
                 ) : (
-                  paginatedRows.map((row, idx) => {
+                  displayRows.map((row, idx) => {
                     const rowNumber = (safeCurrentPage - 1) * pageSize + idx + 1;
                     return (
                       <tr
@@ -459,7 +492,10 @@ export function DataBrowserView({
               <span className="text-muted text-xs">Filas por página:</span>
               <select
                 value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
                 className="rounded-lg border border-surface-border bg-surface-subtle px-2 py-1 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm cursor-pointer"
               >
                 <option value={10}>10</option>
@@ -472,30 +508,22 @@ export function DataBrowserView({
             <span className="text-muted">
               Mostrando{' '}
               <strong className="text-foreground">
-                {processedRows.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}
+                {totalRecordCount === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}
               </strong>{' '}
               a{' '}
               <strong className="text-foreground">
-                {Math.min(safeCurrentPage * pageSize, processedRows.length)}
+                {Math.min(safeCurrentPage * pageSize, totalRecordCount)}
               </strong>{' '}
-              de <strong className="text-foreground">{processedRows.length}</strong> filas cargadas
-              {currentSource?.connectionConfig && (
-                <span>
-                  {' '}• Total en BDD:{' '}
-                  <strong className="text-foreground">
-                    {(liveTotalRows ?? currentTable?.rowCountEstimate ?? processedRows.length).toLocaleString()}
-                  </strong>
-                </span>
-              )}
-              {filterText && ` (filtrados de ${activeRows.length})`}
+              de <strong className="text-foreground">{totalRecordCount.toLocaleString()}</strong> registros
+              {filterText && ` (filtrados)`}
             </span>
           </div>
 
-          {/* Right: Page Navigation */}
+          {/* Right: Server-Side Page Navigation across the entire dataset */}
           <div className="flex items-center gap-1">
             <button
               onClick={() => setCurrentPage(1)}
-              disabled={safeCurrentPage <= 1}
+              disabled={safeCurrentPage <= 1 || isFetchingLive}
               title="Primera página"
               className="p-1.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle text-muted hover:text-foreground disabled:opacity-40 disabled:pointer-events-none transition-colors"
             >
@@ -503,7 +531,7 @@ export function DataBrowserView({
             </button>
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={safeCurrentPage <= 1}
+              disabled={safeCurrentPage <= 1 || isFetchingLive}
               title="Página anterior"
               className="p-1.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle text-muted hover:text-foreground disabled:opacity-40 disabled:pointer-events-none transition-colors"
             >
@@ -516,7 +544,7 @@ export function DataBrowserView({
 
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safeCurrentPage >= totalPages}
+              disabled={safeCurrentPage >= totalPages || isFetchingLive}
               title="Página siguiente"
               className="p-1.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle text-muted hover:text-foreground disabled:opacity-40 disabled:pointer-events-none transition-colors"
             >
@@ -524,7 +552,7 @@ export function DataBrowserView({
             </button>
             <button
               onClick={() => setCurrentPage(totalPages)}
-              disabled={safeCurrentPage >= totalPages}
+              disabled={safeCurrentPage >= totalPages || isFetchingLive}
               title="Última página"
               className="p-1.5 rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle text-muted hover:text-foreground disabled:opacity-40 disabled:pointer-events-none transition-colors"
             >
