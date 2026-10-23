@@ -19,6 +19,7 @@ import { CardExpandModal } from './card-expand-modal';
 import { ShareDashboardModal } from './share-dashboard-modal';
 import { ExportPdfModal } from './export-pdf-modal';
 import { DashboardOnboarding } from './dashboard-onboarding';
+import { FinancialStatementCard } from '../financial/financial-statement-card';
 import type { DataSource } from '../../lib/data-sources';
 import {
   ArrowDown,
@@ -69,7 +70,7 @@ export interface GridCardItem {
   headerPosition?: HeaderPosition;
   headerAlignment?: HeaderAlignment;
   colorMode?: ColorMode;
-  chartKind: DashboardCard['chartKind'] | 'kpi' | 'plan_cuentas' | 'section_header';
+  chartKind: DashboardCard['chartKind'] | 'kpi' | 'plan_cuentas' | 'financial_statement' | 'section_header';
   summaryValue?: string;
   trendText?: string;
   sourceName?: string;
@@ -97,7 +98,7 @@ export interface DynamicCard {
   readonly headerPosition?: HeaderPosition;
   readonly headerAlignment?: HeaderAlignment;
   readonly colorMode?: ColorMode;
-  readonly chartKind: DashboardCard['chartKind'] | 'kpi' | 'plan_cuentas' | 'section_header';
+  readonly chartKind: DashboardCard['chartKind'] | 'kpi' | 'plan_cuentas' | 'financial_statement' | 'section_header';
   readonly echartsOption?: echarts.EChartsOption;
   readonly sourceName: string;
   readonly tableName: string;
@@ -154,8 +155,9 @@ const getContentLimits = (kind: GridCardItem['chartKind']): ContentLimits => {
     case 'area':
       return { minWidth: 4, minHeight: 220, maxWidth: 12, maxHeight: 650 };
     case 'plan_cuentas':
+    case 'financial_statement':
     case 'table_hierarchical':
-      return { minWidth: 5, minHeight: 220, maxWidth: 12, maxHeight: 650 };
+      return { minWidth: 6, minHeight: 320, maxWidth: 12, maxHeight: 900 };
     case 'section_header':
       return { minWidth: 12, minHeight: 50, maxWidth: 12, maxHeight: 120 };
     default:
@@ -422,16 +424,16 @@ export function DashboardCanvas({
         accentColor: '#0EA5E9',
       },
       {
-        id: 'table-plan-cuentas',
-        title: 'Plan de Cuentas (Reporte Jerárquico)',
-        subtitle: 'Estructura de balance con niveles 1 > 11 > 111',
-        chartKind: 'plan_cuentas',
-        width: 6,
-        height: 350,
-        badge: 'Pixel-Perfect',
-        badgeStyle: 'pill_tint',
+        id: 'table-pnl-statement',
+        title: 'Plantilla de Ganancias y Pérdidas Anuales (P&L)',
+        subtitle: 'Estado contable ejecutivo multianual con márgenes y desglose de costos',
+        chartKind: 'financial_statement',
+        width: 12,
+        height: 580,
+        badge: 'Personalizable',
+        badgeStyle: 'pill_gradient',
         badgePosition: 'top_right',
-        accentColor: '#0EA5E9',
+        accentColor: '#2563EB',
       },
       {
         id: 'chart-tendencia-ingresos',
@@ -1550,55 +1552,14 @@ export function DashboardCanvas({
                   />
                 )}
 
-                {card.chartKind === 'plan_cuentas' && (
+                {(card.chartKind === 'plan_cuentas' || card.chartKind === 'financial_statement') && (
                   <div
-                    className="overflow-auto rounded-xl border border-surface-border h-full"
+                    className="overflow-auto rounded-xl border border-surface-border h-full p-2 bg-white dark:bg-slate-950"
                     style={{
                       maxHeight: card.height ? `${card.height - 75}px` : undefined,
                     }}
                   >
-                    <table className="w-full text-left text-xs">
-                      <thead className="border-b border-surface-border text-foreground font-semibold bg-surface-subtle sticky top-0 z-10">
-                        <tr>
-                          <th className="py-2.5 px-3">Código</th>
-                          <th className="py-2.5 px-3">Nombre de Cuenta</th>
-                          <th className="py-2.5 px-3">Tipo</th>
-                          <th className="py-2.5 px-3 text-right">Balance</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-surface-border">
-                        <tr className="font-bold text-foreground bg-surface-subtle/40">
-                          <td className="py-2 px-3">1</td>
-                          <td className="py-2 px-3">ACTIVO TOTAL</td>
-                          <td className="py-2 px-3">Activo</td>
-                          <td className="py-2 px-3 text-right font-mono">$625,000.00</td>
-                        </tr>
-                        <tr className="font-semibold text-foreground">
-                          <td className="py-2 px-3 pl-6">11</td>
-                          <td className="py-2 px-3">Activo Corriente</td>
-                          <td className="py-2 px-3">Activo</td>
-                          <td className="py-2 px-3 text-right font-mono">$385,000.00</td>
-                        </tr>
-                        <tr className="text-muted">
-                          <td className="py-2 px-3 pl-9">111</td>
-                          <td className="py-2 px-3">Disponible en Bancos</td>
-                          <td className="py-2 px-3">Activo</td>
-                          <td className="py-2 px-3 text-right font-mono">$165,000.00</td>
-                        </tr>
-                        <tr className="text-muted">
-                          <td className="py-2 px-3 pl-12">11101</td>
-                          <td className="py-2 px-3">Caja General</td>
-                          <td className="py-2 px-3">Activo</td>
-                          <td className="py-2 px-3 text-right font-mono">$25,000.00</td>
-                        </tr>
-                        <tr className="text-muted">
-                          <td className="py-2 px-3 pl-12">11102</td>
-                          <td className="py-2 px-3">Bancos Nacionales</td>
-                          <td className="py-2 px-3">Activo</td>
-                          <td className="py-2 px-3 text-right font-mono">$140,000.00</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    <FinancialStatementCard isCompact={card.width < 10} isDarkMode={isDarkMode} />
                   </div>
                 )}
               </div>

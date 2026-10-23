@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { type GridCardItem, renderCardBadge } from './dashboard-canvas';
 import { EChartsView } from '../charts/echarts-view';
+import { FinancialStatementCard } from '../financial/financial-statement-card';
 import {
   buildModernAreaOption,
   buildModernBarOption,
@@ -284,6 +285,7 @@ export function CardExpandModal({
 
           {activeCard.chartKind !== 'kpi' &&
             activeCard.chartKind !== 'plan_cuentas' &&
+            activeCard.chartKind !== 'financial_statement' &&
             activeCard.chartKind !== 'section_header' && (
             <div className="w-full">
               <EChartsView
@@ -294,50 +296,9 @@ export function CardExpandModal({
             </div>
           )}
 
-          {activeCard.chartKind === 'plan_cuentas' && (
-            <div className="overflow-x-auto rounded-2xl border border-surface-border bg-surface shadow-sm">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-surface-border text-foreground font-semibold bg-surface-subtle">
-                  <tr>
-                    <th className="py-3 px-4">Código Contable</th>
-                    <th className="py-3 px-4">Nombre de Cuenta</th>
-                    <th className="py-3 px-4">Clasificación</th>
-                    <th className="py-3 px-4 text-right">Balance Registrado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-border">
-                  <tr className="font-bold text-foreground bg-surface-subtle/40">
-                    <td className="py-2.5 px-4">1</td>
-                    <td className="py-2.5 px-4">ACTIVO TOTAL</td>
-                    <td className="py-2.5 px-4">Activo</td>
-                    <td className="py-2.5 px-4 text-right font-mono">$625,000.00</td>
-                  </tr>
-                  <tr className="font-semibold text-foreground">
-                    <td className="py-2.5 px-4 pl-8">11</td>
-                    <td className="py-2.5 px-4">Activo Corriente</td>
-                    <td className="py-2.5 px-4">Activo</td>
-                    <td className="py-2.5 px-4 text-right font-mono">$385,000.00</td>
-                  </tr>
-                  <tr className="text-muted">
-                    <td className="py-2.5 px-4 pl-12">111</td>
-                    <td className="py-2.5 px-4">Disponible en Bancos</td>
-                    <td className="py-2.5 px-4">Activo</td>
-                    <td className="py-2.5 px-4 text-right font-mono">$165,000.00</td>
-                  </tr>
-                  <tr className="text-muted">
-                    <td className="py-2.5 px-4 pl-16">11101</td>
-                    <td className="py-2.5 px-4">Caja General</td>
-                    <td className="py-2.5 px-4">Activo</td>
-                    <td className="py-2.5 px-4 text-right font-mono">$25,000.00</td>
-                  </tr>
-                  <tr className="text-muted">
-                    <td className="py-2.5 px-4 pl-16">11102</td>
-                    <td className="py-2.5 px-4">Bancos Nacionales</td>
-                    <td className="py-2.5 px-4">Activo</td>
-                    <td className="py-2.5 px-4 text-right font-mono">$140,000.00</td>
-                  </tr>
-                </tbody>
-              </table>
+          {(activeCard.chartKind === 'plan_cuentas' || activeCard.chartKind === 'financial_statement') && (
+            <div className="overflow-x-auto rounded-2xl border border-surface-border bg-white dark:bg-slate-950 p-4 shadow-sm">
+              <FinancialStatementCard isDarkMode={isDarkMode} />
             </div>
           )}
 

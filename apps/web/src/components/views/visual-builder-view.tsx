@@ -9,6 +9,7 @@ import {
   type DataTable,
 } from '../../lib/data-sources';
 import { EChartsView } from '../charts/echarts-view';
+import { FinancialStatementCard } from '../financial/financial-statement-card';
 import {
   ACCENT_COLOR_PRESETS,
   type AccentColorName,
@@ -1207,27 +1208,8 @@ export function VisualBuilderView({
                   </div>
                 </div>
               ) : chartKind === 'table_hierarchical' ? (
-                <div className="w-full overflow-x-auto rounded-xl border border-surface-border">
-                  <table className="w-full text-left text-xs">
-                    <thead className="border-b border-surface-border text-foreground font-bold bg-surface-subtle">
-                      <tr>
-                        <th className="py-2.5 px-3">{activeXField}</th>
-                        <th className="py-2.5 px-3 text-right">
-                          {aggFn.toUpperCase()}({activeYField})
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-surface-border">
-                      {aggResult.categories.map((cat, i) => (
-                        <tr key={i} className="text-foreground">
-                          <td className="py-2 px-3 font-medium">{cat}</td>
-                          <td className="py-2 px-3 text-right font-mono">
-                            ${(aggResult.values[i] ?? 0).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="w-full">
+                  <FinancialStatementCard isDarkMode={isDarkMode} isCompact={false} />
                 </div>
               ) : (
                 <div className="w-full">

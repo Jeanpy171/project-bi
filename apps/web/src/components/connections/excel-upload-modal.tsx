@@ -155,38 +155,21 @@ export function ExcelUploadModal({ isOpen, onClose, onSourceAdded }: ExcelUpload
             </label>
           </div>
 
-          {/* Quick Demo File Option & Template Download */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-surface-border bg-surface-subtle">
-            <div className="flex items-center gap-2.5">
-              <TableIcon className="h-5 w-5 text-primary shrink-0" />
-              <div>
-                <span className="text-xs text-foreground font-semibold block">
-                  Plantilla de Métricas y Ventas 2026
-                </span>
-                <span className="text-[11px] text-muted block">
-                  3 hojas: Ventas_Retail, Evolucion_Financiera, Plan_de_Cuentas
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <a
-                href="/metricas_bi_ejemplo.xlsx"
-                download="metricas_bi_ejemplo.xlsx"
-                className="px-2.5 py-1.5 text-xs text-muted hover:text-foreground font-semibold border border-surface-border rounded-lg bg-surface hover:bg-surface-subtle transition-colors shadow-sm"
-              >
-                Descargar .xlsx
-              </a>
+          {/* Optional Sample Link (discrete & clear) */}
+          {!parsedSource && !isLoading && (
+            <div className="flex items-center justify-between p-3 rounded-xl border border-surface-border/70 bg-surface-subtle/50 text-xs">
+              <span className="text-muted">¿No tienes un archivo Excel a mano para probar?</span>
               <button
                 type="button"
                 onClick={handleLoadSample}
-                className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary-hover shadow-sm transition-all"
+                className="text-primary font-bold hover:underline inline-flex items-center gap-1"
               >
-                Cargar en vivo
+                <span>Cargar archivo de ejemplo</span>
               </button>
             </div>
-          </div>
+          )}
 
-          {/* Parsed Result Preview */}
+          {/* Parsed Result Preview (Clean, Non-overlapping Layout) */}
           {isLoading && (
             <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -195,25 +178,41 @@ export function ExcelUploadModal({ isOpen, onClose, onSourceAdded }: ExcelUpload
           )}
 
           {parsedSource && !isLoading && (
-            <div className="rounded-xl border border-success/30 bg-success/5 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-success font-semibold text-xs">
-                <CheckCircle2 className="h-4 w-4" />
-                <span>Archivo procesado con éxito: {parsedSource.name}</span>
+            <div className="rounded-xl border border-success/30 bg-success/5 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-success font-bold text-xs">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>Archivo procesado con éxito: {parsedSource.name}</span>
+                </div>
+                <span className="text-[11px] text-muted">
+                  {parsedSource.tables.length} {parsedSource.tables.length === 1 ? 'hoja detectada' : 'hojas detectadas'}
+                </span>
               </div>
-              <div className="space-y-1 text-xs text-foreground">
+
+              <div className="space-y-2">
                 {parsedSource.tables.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between pl-6 text-muted">
-                    <span className="flex items-center gap-2">
-                      <span>
-                        Hoja: <strong className="text-foreground">{t.name}</strong> ({t.rows.length} filas)
+                  <div
+                    key={t.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-surface border border-surface-border shadow-xs"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <TableIcon className="h-4 w-4 text-primary shrink-0" />
+                      <span className="text-xs font-bold text-foreground">
+                        {t.name}
+                      </span>
+                      <span className="text-[11px] text-muted font-mono">
+                        ({t.rows.length.toLocaleString()} filas)
                       </span>
                       {t.name.includes('Jerárquico') && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/20 text-primary border border-primary/30">
-                          ✨ Rollup Jerárquico Auto-generado
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-primary/15 text-primary border border-primary/30 shrink-0">
+                          ✨ Rollup Jerárquico
                         </span>
                       )}
+                    </div>
+
+                    <span className="text-[11px] text-muted font-medium shrink-0 self-end sm:self-center">
+                      {t.columns.length} columnas detectadas
                     </span>
-                    <span>{t.columns.length} columnas detectadas</span>
                   </div>
                 ))}
               </div>

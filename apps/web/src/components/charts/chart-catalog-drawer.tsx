@@ -116,12 +116,13 @@ export const CHART_CATALOG: readonly ChartCatalogItem[] = [
   },
   {
     id: 'table_hierarchical',
-    title: 'Tabla Tabular Estructurada',
+    title: 'Reporte Financiero / P&L (Ganancias y Pérdidas)',
     category: 'composicion',
-    categoryLabel: 'Composición & Resumen',
-    description: 'Detalle de registros tabulares con alineación numérica monospace.',
-    dataReq: 'Dimensiones y Métricas Libres',
+    categoryLabel: 'Composición & Finanzas',
+    description: 'Estado contable estructurado multianual con secciones sombreadas, márgenes y subtotales personalizables.',
+    dataReq: 'Datos Financieros / Asientos Contables',
     icon: TableIcon,
+    badge: 'Contable',
   },
 ] as const;
 
