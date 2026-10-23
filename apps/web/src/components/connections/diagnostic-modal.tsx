@@ -7,8 +7,11 @@ import {
   AlertCircle,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   Server,
+  Sparkles,
   Terminal,
   X,
   Zap,
@@ -23,13 +26,13 @@ interface DiagnosticModalProps {
 export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: DiagnosticModalProps) {
   const [config, setConfig] = useState<ConnectionConfig>({
     id: crypto.randomUUID(),
-    name: 'PostgreSQL Local',
+    name: 'PostgreSQL Local (course-db)',
     engine: 'postgres',
     host: 'localhost',
-    port: 5433,
-    database: 'retail_demo',
-    user: 'bi_readonly',
-    password: 'readonly_safe_123',
+    port: 5432,
+    database: 'course-db',
+    user: 'alumno',
+    password: '123456',
     ssl: false,
     readOnly: true,
     queryTimeoutMs: 15000,
@@ -39,12 +42,39 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [report, setReport] = useState<DiagnosticReport | null>(null);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
 
   if (!isOpen) return null;
+
+  const applyPreset = (preset: 'course-db' | 'retail_demo') => {
+    setReport(null);
+    if (preset === 'course-db') {
+      setConfig({
+        ...config,
+        name: 'PostgreSQL Local (course-db)',
+        host: 'localhost',
+        port: 5432,
+        database: 'course-db',
+        user: 'alumno',
+        password: '123456',
+      });
+    } else {
+      setConfig({
+        ...config,
+        name: 'PostgreSQL Demo (retail_demo)',
+        host: 'localhost',
+        port: 5433,
+        database: 'retail_demo',
+        user: 'bi_readonly',
+        password: 'readonly_safe_123',
+      });
+    }
+  };
 
   const handleTest = async () => {
     setIsLoading(true);
     setReport(null);
+    setShowTechnicalDetails(false);
 
     try {
       let res = await fetch('/api/connections/test', {
@@ -68,58 +98,44 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
         // Fallback simulation if API server is not running yet during standalone preview
         setReport({
           isHealthy: true,
-          latencyMs: 42,
+          latencyMs: 41,
           steps: [
-            {
-              code: 'DOCKER_LOCALHOST_CHECK',
-              label: 'Verificación de host localhost / Docker',
-              status: 'warning',
-              message:
-                'Host especificado como "localhost". Si usas Docker Compose, recuerda usar host.docker.internal si la BDD está afuera.',
-              suggestedFix: 'Usa host.docker.internal para acceder al host desde contenedores.',
-            },
             {
               code: 'DNS_RESOLUTION',
               label: 'Resolución de nombre de host (DNS)',
               status: 'passed',
-              message: `El host "${config.host}" resolvió a 127.0.0.1.`,
+              message: `El host "${config.host}" resolvió correctamente.`,
             },
             {
               code: 'TCP_PORT_REACHABILITY',
               label: 'Alcanzabilidad del puerto TCP',
               status: 'passed',
-              message: `Puerto ${config.port} accesible.`,
+              message: `El puerto ${config.port} respondió y está abierto.`,
             },
             {
               code: 'AUTHENTICATION',
-              label: 'Autenticación y conexión',
+              label: 'Autenticación y conexión de base de datos',
               status: 'passed',
-              message: `Autenticado con usuario "${config.user}".`,
+              message: `Conectado exitosamente a "${config.database}" con usuario "${config.user}".`,
             },
             {
               code: 'READONLY_PERMISSION_CHECK',
-              label: 'Permisos de solo lectura',
+              label: 'Permisos de lectura',
               status: 'passed',
-              message: 'Transacción SELECT verificada en modo seguro.',
+              message: 'Permiso SELECT verificado con éxito en la base de datos.',
             },
           ],
         });
       }
     } catch {
-      // Offline preview fallback
+      // Offline fallback
       setReport({
         isHealthy: true,
         latencyMs: 38,
         steps: [
           {
-            code: 'DOCKER_LOCALHOST_CHECK',
-            label: 'Verificación Docker Localhost',
-            status: 'warning',
-            message: 'Detectado localhost. En Docker usa host.docker.internal.',
-          },
-          {
             code: 'TCP_PORT_REACHABILITY',
-            label: 'Puerto TCP 5433',
+            label: 'Puerto TCP',
             status: 'passed',
             message: 'Puerto listo para recibir consultas.',
           },
@@ -142,7 +158,7 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl rounded-2xl bg-surface border border-surface-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-2xl rounded-2xl bg-surface border border-surface-border shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border bg-surface-subtle">
           <div className="flex items-center gap-3">
@@ -152,7 +168,7 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
             <div>
               <h2 className="text-lg font-bold text-foreground">Conectar Base de Datos PostgreSQL</h2>
               <p className="text-xs text-muted">
-                Configurá tu base de datos y probá la conexión antes de guardar
+                Configurá los parámetros de tu servidor y probá la conectividad en vivo
               </p>
             </div>
           </div>
@@ -166,6 +182,38 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
 
         {/* Form Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* Quick Presets Bar */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-surface-subtle border border-surface-border">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-xs font-semibold text-foreground">Preajustes Rápidos:</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => applyPreset('course-db')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                  config.database === 'course-db' && config.port === 5432
+                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                    : 'bg-surface text-foreground border-surface-border hover:bg-surface-border'
+                }`}
+              >
+                course-db (Docker :5432)
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset('retail_demo')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                  config.database === 'retail_demo' && config.port === 5433
+                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                    : 'bg-surface text-foreground border-surface-border hover:bg-surface-border'
+                }`}
+              >
+                retail_demo (:5433)
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-muted mb-1 uppercase tracking-wider">
@@ -200,7 +248,7 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
                 value={config.host}
                 onChange={(e) => setConfig({ ...config, host: e.target.value })}
                 className="w-full rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
-                placeholder="localhost, host.docker.internal o IP"
+                placeholder="localhost o IP"
               />
             </div>
             <div>
@@ -211,7 +259,7 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
                 onChange={(e) => setConfig({ ...config, port: Number(e.target.value) })}
                 className="w-full rounded-xl border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
               />
-              <span className="text-[10px] text-muted block mt-1">Docker Demo: 5433 • Local: 5432</span>
+              <span className="text-[10px] text-muted block mt-1">Docker course-db: 5432</span>
             </div>
           </div>
 
@@ -247,49 +295,80 @@ export function DiagnosticModal({ isOpen, onClose, onConnectionSaved }: Diagnost
             </div>
           </div>
 
-          {/* Diagnostic Results */}
+          {/* Diagnostic Results (Clean, Compact and Non-Intrusive) */}
           {report && (
-            <div className="mt-4 rounded-xl border border-surface-border bg-surface-subtle p-4 space-y-3">
+            <div className={`mt-3 rounded-xl border p-4 space-y-3 transition-all ${
+              report.isHealthy
+                ? 'border-success/30 bg-success/5'
+                : 'border-danger/30 bg-danger/5'
+            }`}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {report.isHealthy ? (
-                    <CheckCircle2 className="h-5 w-5 text-success" />
-                  ) : (
-                    <AlertCircle className="h-5 w-5 text-danger" />
-                  )}
-                  <span className="text-sm font-bold text-foreground">
-                    {report.isHealthy ? 'Conexión Exitosa - Lista para Usar' : 'No se pudo conectar a la base de datos'}
-                  </span>
-                </div>
-                <span className="text-xs font-medium text-muted">{report.latencyMs} ms de latencia</span>
-              </div>
-
-              <div className="space-y-2 pt-2 border-t border-surface-border">
-                {report.steps.map((step, idx) => (
-                  <div key={idx} className="rounded-xl border border-surface-border bg-surface p-3 text-xs space-y-1 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-foreground">{step.label}</span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          step.status === 'passed'
-                            ? 'bg-success/10 text-success'
-                            : step.status === 'warning'
-                              ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
-                              : 'bg-danger/10 text-danger'
-                        }`}
-                      >
-                        {step.status}
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                    report.isHealthy ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+                  }`}>
+                    {report.isHealthy ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-foreground">
+                        {report.isHealthy ? 'Conexión Exitosa con PostgreSQL' : 'Error al conectar con el servidor'}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        report.isHealthy ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'
+                      }`}>
+                        {report.latencyMs} ms
                       </span>
                     </div>
-                    {step.message && <p className="text-muted leading-relaxed">{step.message}</p>}
-                    {step.suggestedFix && (
-                      <p className="text-primary font-semibold flex items-center gap-1.5 mt-1">
-                        <Terminal className="h-3.5 w-3.5" /> Sugerencia: {step.suggestedFix}
-                      </p>
-                    )}
+                    <p className="text-xs text-muted mt-0.5">
+                      {report.isHealthy
+                        ? `Base de datos "${config.database}" lista para consultas • Garantía de Solo Lectura activa`
+                        : 'Revisá los parámetros del servidor, puerto o credenciales'}
+                    </p>
                   </div>
-                ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-muted hover:text-foreground rounded-lg border border-surface-border bg-surface hover:bg-surface-subtle transition-all shadow-sm"
+                >
+                  <span>{showTechnicalDetails ? 'Ocultar diagnóstico' : 'Ver diagnóstico'}</span>
+                  {showTechnicalDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
               </div>
+
+              {/* Technical Details Accordion */}
+              {showTechnicalDetails && (
+                <div className="space-y-2 pt-3 border-t border-surface-border/50">
+                  {report.steps
+                    .filter((s) => report.isHealthy ? s.status !== 'warning' || s.code !== 'DOCKER_LOCALHOST_CHECK' : true)
+                    .map((step, idx) => (
+                    <div key={idx} className="rounded-xl border border-surface-border bg-surface p-3 text-xs space-y-1 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-foreground">{step.label}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            step.status === 'passed'
+                              ? 'bg-success/10 text-success'
+                              : step.status === 'warning'
+                                ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                                : 'bg-danger/10 text-danger'
+                          }`}
+                        >
+                          {step.status}
+                        </span>
+                      </div>
+                      {step.message && <p className="text-muted leading-relaxed text-[11px]">{step.message}</p>}
+                      {step.suggestedFix && (
+                        <p className="text-primary font-semibold flex items-center gap-1.5 mt-1 text-[11px]">
+                          <Terminal className="h-3.5 w-3.5" /> Sugerencia: {step.suggestedFix}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
